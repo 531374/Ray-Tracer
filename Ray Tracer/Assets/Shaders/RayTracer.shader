@@ -1,4 +1,4 @@
-Shader "Custom/TestShader"
+Shader "Custom/RayTracer"
 {
     SubShader
     {
@@ -50,6 +50,22 @@ Shader "Custom/TestShader"
             StructuredBuffer<Sphere> Spheres;
             int numSpheres;
 
+            struct Plane
+            {
+                float3 position;
+
+                float3 normal;
+                float3 right;
+                float3 up;
+
+                float2 size;
+
+                RayTracingMaterial material;
+            };
+
+            StructuredBuffer<Plane> Planes;
+            int numPlanes;
+
             struct Ray
             {
                 float3 origin;
@@ -66,14 +82,20 @@ Shader "Custom/TestShader"
                 RayTracingMaterial material;
             };
 
-            //Generate a random value between 0 and 1
-            float RandomValue(inout uint state)
-            {
-                state = state * 747796405 + 2891336453;
-                uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
-                result = (result >> 22) ^ result;
-                return result / 4294967295.0;
-            }
+            // PCG (permuted congruential generator). Thanks to:
+			// www.pcg-random.org and www.shadertoy.com/view/XlGcRh
+			uint NextRandom(inout uint state)
+			{
+				state = state * 747796405 + 2891336453;
+				uint result = ((state >> ((state >> 28) + 4)) ^ state) * 277803737;
+				result = (result >> 22) ^ result;
+				return result;
+			}
+
+			float RandomValue(inout uint state)
+			{
+				return NextRandom(state) / 4294967295.0; // 2^32 - 1
+			}
 
             // Random value in normal distribution 
 			float RandomValueNormalDistribution(inout uint state)
@@ -122,8 +144,39 @@ Shader "Custom/TestShader"
                 }
 
                 return hitInfo;
-                
             }
+
+            HitInfo HitPlane(Plane plane, Ray ray)
+            {
+                HitInfo hitInfo = (HitInfo)0;
+
+                float dotProduct = dot(ray.direction, plane.normal);
+
+                if(abs(dotProduct) < 1e-4) return hitInfo;
+
+                float t = dot(plane.position - ray.origin, plane.normal) / dotProduct;
+
+                if(t < 0) return hitInfo;
+
+                float3 hitPoint = ray.origin + t * ray.direction;
+                float3 toHit = hitPoint - plane.position;
+
+                float uDist = dot(toHit, plane.right);
+                float vDist = dot(toHit, plane.up);
+
+                float halfWidth = plane.size.x / 2.0;
+                float halfHeight = plane.size.y / 2.0;
+
+                if(abs(uDist) > halfWidth || abs(vDist) > halfHeight) return hitInfo;
+
+                hitInfo.didHit = true;
+                hitInfo.distance = t;
+                hitInfo.hitPoint = hitPoint;
+                hitInfo.normal = plane.normal;
+
+                return hitInfo;
+            }
+
 
             HitInfo CalculateRayCollision(Ray ray)
             {
@@ -143,10 +196,23 @@ Shader "Custom/TestShader"
                     }
                 }
 
+                for(int j = 0; j < numPlanes; j++)
+                {
+                    Plane plane = Planes[j];
+                    HitInfo hitInfo = HitPlane(plane, ray);
+
+                    if(hitInfo.didHit && hitInfo.distance < closestHit.distance)
+                    {
+                        closestHit = hitInfo;
+                        closestHit.material = plane.material;
+                    }
+                }
+
                 return closestHit;
             }
 
             int MaxBounceCount;
+            int NumRaysPerPixel;
 
             float3 Trace(Ray ray, inout int rngState)
             {
@@ -160,7 +226,7 @@ Shader "Custom/TestShader"
                     if(hitInfo.didHit)
                     {
                         ray.origin = hitInfo.hitPoint;
-                        ray.direction = RandomHemisphereDirection(hitInfo.normal, rngState);    
+                        ray.direction = normalize(hitInfo.normal + RandomDirection(rngState));
 
                         RayTracingMaterial material = hitInfo.material;
                         float3 emittedLight = material.emissionColor * material.emissionStrength;
@@ -179,12 +245,14 @@ Shader "Custom/TestShader"
             float3 ViewParams;
             float4x4 CamLocalToWorldMatrix;
 
+            int Frame;
+
             float4 frag (v2f i) : SV_Target
             {
                 uint2 numPixels = _ScreenParams.xy;
                 uint2 pixelCoord = i.uv * numPixels;    
-                uint pixelIndex = pixelCoord.y * numPixels.x * pixelCoord.x;
-                uint rngState = pixelIndex;
+                uint pixelIndex = pixelCoord.y * numPixels.x + pixelCoord.x;
+				uint rngState = pixelIndex + Frame * 719393;
 
                 float3 viewPointLocal = float3(i.uv - 0.5, 1) * ViewParams;
                 float3 viewPoint = mul(CamLocalToWorldMatrix, float4(viewPointLocal, 1));
@@ -193,7 +261,14 @@ Shader "Custom/TestShader"
                 ray.origin = _WorldSpaceCameraPos;
                 ray.direction = normalize(viewPoint - ray.origin);
 
-                float3 pixelColor = Trace(ray, rngState);
+                float3 totalIncomingLight = 0;
+
+                for(int rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
+                {
+                    totalIncomingLight += Trace(ray, rngState);
+                }
+
+                float3 pixelColor = totalIncomingLight / NumRaysPerPixel;
                 return float4(pixelColor, 1);
             }
 

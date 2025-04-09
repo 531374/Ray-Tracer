@@ -7,12 +7,25 @@ public class RayTracingManager : MonoBehaviour
 {
     [SerializeField] bool useShaderInSceneView;
     [SerializeField] Shader rayTracingShader;
-    Material rayTracingMaterial;
+    [SerializeField] Shader accumulatorShader;
 
-    [SerializeField, Range(1, 10)] int MaxBounceCount;
+    Material rayTracingMaterial;
+    Material accumulatorMaterial;
+
+    [SerializeField] int MaxBounceCount;
+    [SerializeField] int numRaysPerPixel;
 
     ComputeBuffer sphereBuffer;
+    ComputeBuffer planeBuffer;
+
     RenderTexture resultTexture;
+
+    int numRenderedFrames;
+
+    private void Start()
+    {
+        numRenderedFrames = 0;
+    }
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
@@ -33,31 +46,43 @@ public class RayTracingManager : MonoBehaviour
         else
         {
             InitializeFrame();
-            Graphics.Blit(null, destination, rayTracingMaterial);
 
+            //Create copy of the previous rendered frame
+            RenderTexture previousFrameCopy = RenderTexture.GetTemporary(source.width, source.height, 0, ShaderHelper.RGBA_SFloat);
+            Graphics.Blit(resultTexture, previousFrameCopy);
 
-            //RenderTexture previousFrameCopy = RenderTexture.GetTemporary(source.width, source.height, 0, ShaderHelper.RGBA_SFloat);
-            //Graphics.Blit(resultTexture, previousFrameCopy);
+            //Run the ray tracer and save result to a texture
+            rayTracingMaterial.SetInt("Frame", numRenderedFrames);
+            RenderTexture currentFrame = RenderTexture.GetTemporary(source.width, source.height, 0, ShaderHelper.RGBA_SFloat);
+            Graphics.Blit(null, currentFrame, rayTracingMaterial);
 
-            //RenderTexture currentFrame = RenderTexture.GetTemporary(source.width, source.height, 0, ShaderHelper.RGBA_SFloat);
+            //Accumulate frames
+            accumulatorMaterial.SetInt("Frame", numRenderedFrames);
+            accumulatorMaterial.SetTexture("_MainTexOld", previousFrameCopy);
+            Graphics.Blit(currentFrame, resultTexture, accumulatorMaterial);
 
-            //Graphics.Blit(null, resultTexture, rayTracingMaterial);
+            //Draw to the screen
+            Graphics.Blit(resultTexture, destination);
 
-            //Graphics.Blit(resultTexture, destination);
+            //Release the temporary buffers
+            RenderTexture.ReleaseTemporary(currentFrame);
+            RenderTexture.ReleaseTemporary(previousFrameCopy);
 
-            //RenderTexture.ReleaseTemporary(currentFrame);
-            //RenderTexture.ReleaseTemporary(previousFrameCopy);
+            numRenderedFrames += Application.isPlaying ? 1 : 0;
         }
     }
 
     void InitializeFrame()
     {
         ShaderHelper.InitMaterial(rayTracingShader, ref rayTracingMaterial);
+        ShaderHelper.InitMaterial(accumulatorShader, ref accumulatorMaterial);
 
         ShaderHelper.CreateRenderTexture(ref resultTexture, Screen.width, Screen.height, FilterMode.Bilinear, ShaderHelper.RGBA_SFloat, "Result");
 
-        UpdateCameraParams(Camera.current);
         CreateSpheres();
+        CreatePlanes();
+
+        UpdateCameraParams(Camera.current);
         UpdateShaderParams();
     }
 
@@ -73,6 +98,7 @@ public class RayTracingManager : MonoBehaviour
     void UpdateShaderParams()
     {
         rayTracingMaterial.SetInt("MaxBounceCount", MaxBounceCount);
+        rayTracingMaterial.SetInt("NumRaysPerPixel", numRaysPerPixel);
     }
 
     void CreateSpheres()
@@ -95,10 +121,43 @@ public class RayTracingManager : MonoBehaviour
         rayTracingMaterial.SetInt("numSpheres", sphereBuffer.count);
     }
 
+    void CreatePlanes()
+    {
+        PlaneObject[] planeObjects = FindObjectsOfType<PlaneObject>();
+        Plane[] planes = new Plane[planeObjects.Length];
+
+        for(int i = 0; i < planeObjects.Length; i++)
+        {
+            planes[i] = new Plane()
+            {
+                position = planeObjects[i].transform.position,
+
+                normal = planeObjects[i].transform.up.normalized,
+                right = planeObjects[i].transform.right.normalized,
+                up = planeObjects[i].transform.forward.normalized,
+
+                size = new Vector2(planeObjects[i].transform.localScale.x, planeObjects[i].transform.localScale.z) * 10f,
+
+                material = planeObjects[i].material
+            };
+        }
+
+        ShaderHelper.CreateStructuredBuffer(ref planeBuffer, planes);
+        rayTracingMaterial.SetBuffer("Planes", planeBuffer);
+        rayTracingMaterial.SetInt("numPlanes", planeBuffer.count);
+    }
     private void OnDisable()
     {
         ShaderHelper.Release(sphereBuffer);
+        ShaderHelper.Release(planeBuffer);
+
         ShaderHelper.Release(resultTexture);
+    }
+
+    private void OnValidate()
+    {
+        MaxBounceCount = Mathf.Max(0, MaxBounceCount);
+        numRaysPerPixel = Mathf.Max(1, numRaysPerPixel);
     }
 
 }
