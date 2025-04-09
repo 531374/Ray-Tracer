@@ -15,6 +15,8 @@ public class RayTracingManager : MonoBehaviour
     [SerializeField] int MaxBounceCount;
     [SerializeField] int numRaysPerPixel;
 
+    [SerializeField] Color skyColor;
+
     ComputeBuffer sphereBuffer;
     ComputeBuffer planeBuffer;
 
@@ -29,9 +31,7 @@ public class RayTracingManager : MonoBehaviour
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        bool isSceneCam = Camera.current.name == "SceneCamera";
-
-        if (isSceneCam)
+        if (!Application.isPlaying)
         {
             if (useShaderInSceneView)
             {
@@ -68,7 +68,7 @@ public class RayTracingManager : MonoBehaviour
             RenderTexture.ReleaseTemporary(currentFrame);
             RenderTexture.ReleaseTemporary(previousFrameCopy);
 
-            numRenderedFrames += Application.isPlaying ? 1 : 0;
+            numRenderedFrames++;
         }
     }
 
@@ -88,11 +88,12 @@ public class RayTracingManager : MonoBehaviour
 
     void UpdateCameraParams(Camera cam)
     {
-        float planeHeight = cam.nearClipPlane * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float planeHeight = cam.nearClipPlane * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 2f;
         float planeWidth = planeHeight * cam.aspect;
 
         rayTracingMaterial.SetVector("ViewParams", new Vector3(planeWidth, planeHeight, cam.nearClipPlane));
         rayTracingMaterial.SetMatrix("CamLocalToWorldMatrix", cam.transform.localToWorldMatrix);
+        rayTracingMaterial.SetColor("skyColor", skyColor);
     }
 
     void UpdateShaderParams()
@@ -136,7 +137,7 @@ public class RayTracingManager : MonoBehaviour
                 right = planeObjects[i].transform.right.normalized,
                 up = planeObjects[i].transform.forward.normalized,
 
-                size = new Vector2(planeObjects[i].transform.localScale.x, planeObjects[i].transform.localScale.z) * 10f,
+                halfSize = new Vector2(planeObjects[i].transform.localScale.x, planeObjects[i].transform.localScale.z) * 5f,
 
                 material = planeObjects[i].material
             };

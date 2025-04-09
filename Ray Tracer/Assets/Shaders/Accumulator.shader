@@ -47,7 +47,7 @@ Shader "Unlit/Accumulator"
                 float4 newRender = tex2D(_MainTex, i.uv);
 
                 float weight = 1.0 / (Frame + 1);
-                float4 accumulatedAverage = oldRender * (1-weight) + newRender * weight;
+                float4 accumulatedAverage = saturate(oldRender * (1-weight) + newRender * weight);
 
                 return accumulatedAverage;
             }

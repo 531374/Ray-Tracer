@@ -6,18 +6,28 @@ using UnityEngine;
 public class PlaneObject : MonoBehaviour
 {
     public RayTracingMaterial material;
-    public Color color;
-    public Color emissionColor;
-    public float emissionStrength;
 
-    private void OnValidate()
+    [SerializeField, HideInInspector] int materialObjectID;
+    [SerializeField, HideInInspector] bool materialInitFlag;
+
+    void OnValidate()
     {
-        material.SetDefaults();
-        material.color = color;
-        material.emissionColor = emissionColor;
-        material.emissionStrength = emissionStrength;
+        if (!materialInitFlag)
+        {
+            materialInitFlag = true;
+            material.SetDefaults();
+        }
 
-        GetComponent<MeshRenderer>().sharedMaterial.color = color;
+        MeshRenderer renderer = GetComponent<MeshRenderer>();
+        if (renderer != null)
+        {
+            if (materialObjectID != gameObject.GetInstanceID())
+            {
+                renderer.sharedMaterial = new Material(renderer.sharedMaterial);
+                materialObjectID = gameObject.GetInstanceID();
+            }
+            renderer.sharedMaterial.color = material.color;
+        }
     }
 }
 
@@ -31,7 +41,7 @@ struct Plane
     public Vector3 right;
     public Vector3 up;
 
-    public Vector2 size;
+    public Vector2 halfSize;
 
     public RayTracingMaterial material;
 }

@@ -38,6 +38,8 @@ Shader "Custom/RayTracer"
                 float4 color;
                 float4 emissionColor;
                 float emissionStrength;
+                float smoothness;
+                float specularProbability;
             };
             
             struct Sphere
@@ -58,7 +60,7 @@ Shader "Custom/RayTracer"
                 float3 right;
                 float3 up;
 
-                float2 size;
+                float2 halfSize;
 
                 RayTracingMaterial material;
             };
@@ -152,24 +154,16 @@ Shader "Custom/RayTracer"
 
                 float dotProduct = dot(ray.direction, plane.normal);
 
-                if(abs(dotProduct) < 1e-4) return hitInfo;
+                if(dotProduct > 0) return hitInfo;
 
                 float t = dot(plane.position - ray.origin, plane.normal) / dotProduct;
-
-                if(t < 0) return hitInfo;
-
                 float3 hitPoint = ray.origin + t * ray.direction;
                 float3 toHit = hitPoint - plane.position;
 
                 float uDist = dot(toHit, plane.right);
                 float vDist = dot(toHit, plane.up);
 
-                float halfWidth = plane.size.x / 2.0;
-                float halfHeight = plane.size.y / 2.0;
-
-                if(abs(uDist) > halfWidth || abs(vDist) > halfHeight) return hitInfo;
-
-                hitInfo.didHit = true;
+                hitInfo.didHit = t >= 0 && abs(uDist) <= plane.halfSize.x && abs(vDist) <= plane.halfSize.y;
                 hitInfo.distance = t;
                 hitInfo.hitPoint = hitPoint;
                 hitInfo.normal = plane.normal;
@@ -214,6 +208,8 @@ Shader "Custom/RayTracer"
             int MaxBounceCount;
             int NumRaysPerPixel;
 
+            float3 skyColor;
+
             float3 Trace(Ray ray, inout int rngState)
             {
                 float3 incomingLight = 0;
@@ -223,18 +219,25 @@ Shader "Custom/RayTracer"
                 for(int i = 0; i <= MaxBounceCount; i++)
                 {
                     HitInfo hitInfo = CalculateRayCollision(ray);
+
                     if(hitInfo.didHit)
                     {
-                        ray.origin = hitInfo.hitPoint;
-                        ray.direction = normalize(hitInfo.normal + RandomDirection(rngState));
-
                         RayTracingMaterial material = hitInfo.material;
+                        ray.origin = hitInfo.hitPoint;
+
+                        float3 diffuseDirection = normalize(hitInfo.normal + RandomDirection(rngState));
+                        float3 specularDirection = reflect(ray.direction, hitInfo.normal);
+
+                        bool isSpecularBounce = material.specularProbability >= RandomValue(rngState);
+                        ray.direction = lerp(diffuseDirection, specularDirection, material.smoothness * isSpecularBounce);
+
                         float3 emittedLight = material.emissionColor * material.emissionStrength;
                         incomingLight += emittedLight * rayColor;
                         rayColor *= material.color;
                     }
                     else
                     {
+                        incomingLight += skyColor * rayColor;
                         break;
                     }
                 }
