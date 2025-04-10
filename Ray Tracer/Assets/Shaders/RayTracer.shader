@@ -190,7 +190,7 @@ Shader "Custom/RayTracer"
                 return hitInfo;
             }
 
-            HitInfo CalculateRayCollision(Ray ray)
+            HitInfo CalculateRayCollision(Ray ray, inout uint numTriTests)
             {
                 HitInfo closestHit = (HitInfo)0;
 
@@ -219,6 +219,7 @@ Shader "Custom/RayTracer"
                         int triangleIndex = meshInfo.triangleStartIndex + k;
                         Triangle tri = AllTriangles[triangleIndex];
                         HitInfo hitInfo = HitTriangle(tri, ray);
+                        numTriTests++;
 
                         if(hitInfo.didHit && hitInfo.distance < closestHit.distance)
                         {
@@ -240,11 +241,11 @@ Shader "Custom/RayTracer"
             {
                 float3 incomingLight = 0;
                 float3 rayColor = 1;
-
+                uint numTriTests = 0;
 
                 for(int i = 0; i <= MaxBounceCount; i++)
                 {
-                    HitInfo hitInfo = CalculateRayCollision(ray);
+                    HitInfo hitInfo = CalculateRayCollision(ray, numTriTests);
 
                     if(hitInfo.didHit)
                     {
@@ -260,6 +261,7 @@ Shader "Custom/RayTracer"
                         float3 emittedLight = material.emissionColor * material.emissionStrength;
                         incomingLight += emittedLight * rayColor;
                         rayColor *= material.color;
+                        if(dot(rayColor,1) < 0.0001) break; //Exit early if contribution is too low
                     }
                     else
                     {
@@ -268,7 +270,9 @@ Shader "Custom/RayTracer"
                     }
                 }
 
-                return incomingLight;
+                // return incomingLight;
+                float debugVis = numTriTests / 2000.0;
+                return debugVis < 1 ? debugVis : float3(1,0,0);
             }
 
             float3 ViewParams;

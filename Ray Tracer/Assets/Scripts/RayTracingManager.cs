@@ -7,10 +7,13 @@ public class RayTracingManager : MonoBehaviour
 {
     public static int TriangleLimit = 1500;
 
+    [Header("Enable Shaders")]
+    [SerializeField] bool useRayTracingInSceneView;
+    [SerializeField] bool useAccumulator;
+
     [Header("Settings")]
-    [SerializeField] bool useShaderInSceneView;
-    [SerializeField] int MaxBounceCount;
-    [SerializeField] int numRaysPerPixel;
+    public int MaxBounceCount;
+    public int numRaysPerPixel;
     [SerializeField] Color skyColor;
 
     [Header("References")]
@@ -35,6 +38,13 @@ public class RayTracingManager : MonoBehaviour
     [SerializeField] int numMeshChunks;
     [SerializeField] int numTriangles;
 
+    public static RayTracingManager instance;
+
+    private void Awake()
+    {
+        if (instance == null) instance = this;
+    }
+
     private void Start()
     {
         numRenderedFrames = 0;
@@ -44,7 +54,7 @@ public class RayTracingManager : MonoBehaviour
     {
         if (!Application.isPlaying)
         {
-            if (useShaderInSceneView)
+            if (useRayTracingInSceneView)
             {
                 InitializeFrame();
                 Graphics.Blit(null, destination, rayTracingMaterial);
@@ -57,6 +67,12 @@ public class RayTracingManager : MonoBehaviour
         else
         {
             InitializeFrame();
+
+            if (!useAccumulator)
+            {
+                Graphics.Blit(null, destination, rayTracingMaterial);
+                return;
+            }
 
             //Create copy of the previous rendered frame
             RenderTexture previousFrameCopy = RenderTexture.GetTemporary(source.width, source.height, 0, ShaderHelper.RGBA_SFloat);

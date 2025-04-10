@@ -16,11 +16,4 @@ public class Ray
         this.direction = pDirection;
     }
 
-    //Returns the position of the ray at t
-    public Vector3 at(float t)
-    {
-        return origin + t * direction;
-    }
-
-
 }
