@@ -52,21 +52,24 @@ Shader "Custom/RayTracer"
             StructuredBuffer<Sphere> Spheres;
             int numSpheres;
 
-            struct Plane
+            struct Triangle
             {
-                float3 position;
-
-                float3 normal;
-                float3 right;
-                float3 up;
-
-                float2 halfSize;
-
-                RayTracingMaterial material;
+                float3 posA, posB, posC;
+                float3 normalA, normalB, normalC;
             };
 
-            StructuredBuffer<Plane> Planes;
-            int numPlanes;
+            struct MeshInfo
+            {
+                int triangleStartIndex;
+                int triangleCount;
+                RayTracingMaterial material;
+                float3 boundsMin;
+                float3 boundsMax;
+            };
+
+            StructuredBuffer<Triangle> AllTriangles;
+            StructuredBuffer<MeshInfo> AllMeshInfo;
+            int numMeshes;
 
             struct Ray
             {
@@ -120,6 +123,45 @@ Shader "Custom/RayTracer"
                 float3 dir = RandomDirection(state);
                 return dir * sign(dot(normal, dir));
             }
+            
+            //Uses following algorithm so check hit
+            //https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+
+            HitInfo HitTriangle(Triangle tri, Ray ray)
+            {
+                float3 edgeAB = tri.posB - tri.posA;
+                float3 edgeAC = tri.posC - tri.posA;
+                float3 normalVector = cross(edgeAB, edgeAC);
+                float3 ao = ray.origin - tri.posA;
+                float3 dao = cross(ao, ray.direction);
+
+                float determinant = -dot(ray.direction, normalVector);
+                float invDet = 1.0/determinant;
+
+                float dst = dot(ao, normalVector) * invDet;
+                float u = dot(edgeAC, dao) * invDet;
+                float v = -dot(edgeAB, dao) * invDet;
+                float w = 1 - u - v;
+
+                HitInfo hitInfo;
+                hitInfo.didHit = determinant >= 1e-6 && dst >= 0 && u >= 0 && v >= 0 && w >= 0;
+                hitInfo.hitPoint = ray.origin + ray.direction * dst;
+                hitInfo.normal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
+                hitInfo.distance = dst;
+                return hitInfo;
+            }
+
+            bool RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
+            {
+                float3 invDir = 1 / ray.direction;
+                float3 tMin = (boxMin - ray.origin) * invDir;
+                float3 tMax = (boxMax - ray.origin) * invDir;
+                float3 t1 = min(tMin, tMax);
+                float3 t2 = max(tMin, tMax);
+                float tNear = max(max(t1.x, t1.y), t1.z);
+                float tFar = min(min(t2.x, t2.y), t2.z);
+                return tNear <= tFar;
+            }
 
             HitInfo HitSphere(Sphere sphere, Ray ray)
             {
@@ -148,30 +190,6 @@ Shader "Custom/RayTracer"
                 return hitInfo;
             }
 
-            HitInfo HitPlane(Plane plane, Ray ray)
-            {
-                HitInfo hitInfo = (HitInfo)0;
-
-                float dotProduct = dot(ray.direction, plane.normal);
-
-                if(dotProduct > 0) return hitInfo;
-
-                float t = dot(plane.position - ray.origin, plane.normal) / dotProduct;
-                float3 hitPoint = ray.origin + t * ray.direction;
-                float3 toHit = hitPoint - plane.position;
-
-                float uDist = dot(toHit, plane.right);
-                float vDist = dot(toHit, plane.up);
-
-                hitInfo.didHit = t >= 0 && abs(uDist) <= plane.halfSize.x && abs(vDist) <= plane.halfSize.y;
-                hitInfo.distance = t;
-                hitInfo.hitPoint = hitPoint;
-                hitInfo.normal = plane.normal;
-
-                return hitInfo;
-            }
-
-
             HitInfo CalculateRayCollision(Ray ray)
             {
                 HitInfo closestHit = (HitInfo)0;
@@ -190,15 +208,23 @@ Shader "Custom/RayTracer"
                     }
                 }
 
-                for(int j = 0; j < numPlanes; j++)
+                for(int j = 0; j < numMeshes; j++)
                 {
-                    Plane plane = Planes[j];
-                    HitInfo hitInfo = HitPlane(plane, ray);
+                    MeshInfo meshInfo = AllMeshInfo[j];
+                    
+                    if(!RayBoundingBox(ray, meshInfo.boundsMin, meshInfo.boundsMax)) continue;
 
-                    if(hitInfo.didHit && hitInfo.distance < closestHit.distance)
+                    for(int k = 0; k < meshInfo.triangleCount; k++)
                     {
-                        closestHit = hitInfo;
-                        closestHit.material = plane.material;
+                        int triangleIndex = meshInfo.triangleStartIndex + k;
+                        Triangle tri = AllTriangles[triangleIndex];
+                        HitInfo hitInfo = HitTriangle(tri, ray);
+
+                        if(hitInfo.didHit && hitInfo.distance < closestHit.distance)
+                        {
+                            closestHit = hitInfo;
+                            closestHit.material = meshInfo.material;
+                        }
                     }
                 }
 

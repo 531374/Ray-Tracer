@@ -5,24 +5,35 @@ using UnityEngine;
 [ExecuteAlways, ImageEffectAllowedInSceneView]
 public class RayTracingManager : MonoBehaviour
 {
+    public static int TriangleLimit = 1500;
+
+    [Header("Settings")]
     [SerializeField] bool useShaderInSceneView;
+    [SerializeField] int MaxBounceCount;
+    [SerializeField] int numRaysPerPixel;
+    [SerializeField] Color skyColor;
+
+    [Header("References")]
     [SerializeField] Shader rayTracingShader;
     [SerializeField] Shader accumulatorShader;
 
+
     Material rayTracingMaterial;
     Material accumulatorMaterial;
-
-    [SerializeField] int MaxBounceCount;
-    [SerializeField] int numRaysPerPixel;
-
-    [SerializeField] Color skyColor;
-
-    ComputeBuffer sphereBuffer;
-    ComputeBuffer planeBuffer;
-
     RenderTexture resultTexture;
 
-    int numRenderedFrames;
+
+    ComputeBuffer sphereBuffer;
+    ComputeBuffer triangleBuffer;
+    ComputeBuffer meshInfoBuffer;
+
+    List<Triangle> allTriangles;
+    List<MeshInfo> allMeshInfo;
+
+    [Header("Info")]
+    [SerializeField] int numRenderedFrames;
+    [SerializeField] int numMeshChunks;
+    [SerializeField] int numTriangles;
 
     private void Start()
     {
@@ -80,7 +91,7 @@ public class RayTracingManager : MonoBehaviour
         ShaderHelper.CreateRenderTexture(ref resultTexture, Screen.width, Screen.height, FilterMode.Bilinear, ShaderHelper.RGBA_SFloat, "Result");
 
         CreateSpheres();
-        CreatePlanes();
+        CreateMeshes();
 
         UpdateCameraParams(Camera.current);
         UpdateShaderParams();
@@ -122,35 +133,45 @@ public class RayTracingManager : MonoBehaviour
         rayTracingMaterial.SetInt("numSpheres", sphereBuffer.count);
     }
 
-    void CreatePlanes()
+    
+
+    void CreateMeshes()
     {
-        PlaneObject[] planeObjects = FindObjectsOfType<PlaneObject>();
-        Plane[] planes = new Plane[planeObjects.Length];
+        RayTracingMesh[] meshes = FindObjectsOfType<RayTracingMesh>();
 
-        for(int i = 0; i < planeObjects.Length; i++)
+        allTriangles ??= new List<Triangle>();
+        allMeshInfo ??= new List<MeshInfo>();
+        allTriangles.Clear();
+        allMeshInfo.Clear();
+
+        for(int i = 0; i < meshes.Length; i++)
         {
-            planes[i] = new Plane()
+            MeshChunk[] chunks = meshes[i].GetSubMeshes();
+
+            foreach(MeshChunk chunk in chunks)
             {
-                position = planeObjects[i].transform.position,
-
-                normal = planeObjects[i].transform.up.normalized,
-                right = planeObjects[i].transform.right.normalized,
-                up = planeObjects[i].transform.forward.normalized,
-
-                halfSize = new Vector2(planeObjects[i].transform.localScale.x, planeObjects[i].transform.localScale.z) * 5f,
-
-                material = planeObjects[i].material
-            };
+                RayTracingMaterial material = meshes[i].GetMaterial(chunk.subMeshIndex);
+                allMeshInfo.Add(new MeshInfo(allTriangles.Count, chunk.triangles.Length, material, chunk.bounds.min, chunk.bounds.max));
+                allTriangles.AddRange(chunk.triangles);
+            }
         }
 
-        ShaderHelper.CreateStructuredBuffer(ref planeBuffer, planes);
-        rayTracingMaterial.SetBuffer("Planes", planeBuffer);
-        rayTracingMaterial.SetInt("numPlanes", planeBuffer.count);
+        numMeshChunks = allMeshInfo.Count;
+        numTriangles = allTriangles.Count;  
+
+        ShaderHelper.CreateStructuredBuffer(ref triangleBuffer, allTriangles);
+        ShaderHelper.CreateStructuredBuffer(ref meshInfoBuffer, allMeshInfo);
+        rayTracingMaterial.SetBuffer("AllTriangles", triangleBuffer);
+        rayTracingMaterial.SetBuffer("AllMeshInfo", meshInfoBuffer);
+        rayTracingMaterial.SetInt("numMeshes", allMeshInfo.Count);
+        
     }
+
     private void OnDisable()
     {
         ShaderHelper.Release(sphereBuffer);
-        ShaderHelper.Release(planeBuffer);
+        ShaderHelper.Release(triangleBuffer);
+        ShaderHelper.Release(meshInfoBuffer);
 
         ShaderHelper.Release(resultTexture);
     }
