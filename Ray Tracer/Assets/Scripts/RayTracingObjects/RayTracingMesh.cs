@@ -24,7 +24,7 @@ public class RayTracingMesh : MonoBehaviour
             throw new System.Exception($"Too many triangles :(");
         }
 
-        if (meshFilter != null && (mesh != meshFilter.sharedMesh || localChunks == null))
+        if (meshFilter != null && (mesh != meshFilter.sharedMesh || localChunks == null || localChunks.Length == 0))
         {
             mesh = meshFilter.sharedMesh;
             localChunks = CreateAllMeshChunks(mesh);
