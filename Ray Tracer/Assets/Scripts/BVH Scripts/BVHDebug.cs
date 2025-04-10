@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Unity.VisualScripting;
 using UnityEngine;
 
+//This class basically takes the work usually done for every pixel on the GPU
+//And does it on the CPU for one ray for easy debugging and visualizing
 public class BVHDebug : MonoBehaviour
 {
     BVH bvh;
@@ -20,7 +22,7 @@ public class BVHDebug : MonoBehaviour
         }
 
         Gizmos.color = Color.red;
-        BVHResult result = RayTriangleTestBVH(bvh.allNodes[0], new Ray(rayT.position, rayT.forward), new BVHResult());
+        BVHResult result = RayTriangleTestBVH(bvh.AllNodes[0], new Ray(rayT.position, rayT.forward), new BVHResult());
 
         if(result.didHit && result.node != null)
         {
@@ -43,8 +45,8 @@ public class BVHDebug : MonoBehaviour
         if (fill) Gizmos.DrawCube(node.bounds.Centre, node.bounds.Max - node.bounds.Min);
         else Gizmos.DrawWireCube(node.bounds.Centre, node.bounds.Max - node.bounds.Min);
 
-        DrawNodes(bvh.allNodes[node.childIndex + 0], depth + 1);
-        DrawNodes(bvh.allNodes[node.childIndex + 1], depth + 1);
+        DrawNodes(bvh.AllNodes[node.childIndex + 0], depth + 1);
+        DrawNodes(bvh.AllNodes[node.childIndex + 1], depth + 1);
     }
 
     bool RayBoundingBox(Ray ray, BoundingBox bounds)
@@ -97,21 +99,23 @@ public class BVHDebug : MonoBehaviour
             int childIndex = node.childIndex;
             if (childIndex == -1)
             {
-                foreach (BVHTriangle triangle in node.triangles)
+                for(int i = node.firstTriangleIndex; i < node.firstTriangleIndex + node.triangleCount; i++)
                 {
-                    HitInfo hitInfo = HitTriangle(ray, triangle);
+                    BVHTriangle tri = bvh.AllTriangles[i];
+
+                    HitInfo hitInfo = HitTriangle(ray, tri);
                     if (hitInfo.didHit && hitInfo.distance < state.closestDistance)
                     {
                         state.closestDistance = hitInfo.distance;
                         state.node = node;
-                        state.triangle = triangle;
+                        state.triangle = tri;
                     }
                 }
             }
             else
             {
-                state = RayTriangleTestBVH(bvh.allNodes[childIndex + 0], ray, state);
-                state = RayTriangleTestBVH(bvh.allNodes[childIndex + 1], ray, state);
+                state = RayTriangleTestBVH(bvh.AllNodes[childIndex + 0], ray, state);
+                state = RayTriangleTestBVH(bvh.AllNodes[childIndex + 1], ray, state);
             }
         }
 

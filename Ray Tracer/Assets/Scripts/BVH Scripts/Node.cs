@@ -5,7 +5,8 @@ using UnityEngine;
 public class Node
 {
     public BoundingBox bounds = new();
-    public List<BVHTriangle> triangles = new();
+    public int firstTriangleIndex;
+    public int triangleCount;
     public int childIndex = -1;
 }
 
