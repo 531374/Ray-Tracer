@@ -5,8 +5,6 @@ using UnityEngine;
 [ExecuteAlways, ImageEffectAllowedInSceneView]
 public class RayTracingManager : MonoBehaviour
 {
-    public static int TriangleLimit = 1500;
-
     [Header("Enable Shaders")]
     [SerializeField] bool useRayTracingInSceneView;
     [SerializeField] bool useAccumulator;
@@ -26,17 +24,21 @@ public class RayTracingManager : MonoBehaviour
     RenderTexture resultTexture;
 
 
-    ComputeBuffer sphereBuffer;
     ComputeBuffer triangleBuffer;
-    ComputeBuffer meshInfoBuffer;
+    ComputeBuffer nodeBuffer;
+    ComputeBuffer modelBuffer;
 
-    List<Triangle> allTriangles;
-    List<MeshInfo> allMeshInfo;
+    List<BVHTriangle> allTriangles;
+    List<Node> allNodes;
+    List<Model> allModels;
 
     [Header("Info")]
     [SerializeField] int numRenderedFrames;
     [SerializeField] int numMeshChunks;
     [SerializeField] int numTriangles;
+
+    [HideInInspector] public int debugVisRays = 2000;
+    [HideInInspector] public bool enableDebugVisRays = false;
 
     public static RayTracingManager instance;
 
@@ -71,6 +73,8 @@ public class RayTracingManager : MonoBehaviour
             if (!useAccumulator)
             {
                 Graphics.Blit(null, destination, rayTracingMaterial);
+                rayTracingMaterial.SetInt("Frame", numRenderedFrames);
+                numRenderedFrames++;
                 return;
             }
 
@@ -106,7 +110,6 @@ public class RayTracingManager : MonoBehaviour
 
         ShaderHelper.CreateRenderTexture(ref resultTexture, Screen.width, Screen.height, FilterMode.Bilinear, ShaderHelper.RGBA_SFloat, "Result");
 
-        CreateSpheres();
         CreateMeshes();
 
         UpdateCameraParams(Camera.current);
@@ -128,66 +131,54 @@ public class RayTracingManager : MonoBehaviour
         rayTracingMaterial.SetInt("MaxBounceCount", MaxBounceCount);
         rayTracingMaterial.SetInt("NumRaysPerPixel", numRaysPerPixel);
     }
-
-    void CreateSpheres()
-    {
-        SphereObject[] sphereObjects = FindObjectsOfType<SphereObject>();
-        Sphere[] spheres = new Sphere[sphereObjects.Length];
-
-        for (int i = 0; i < sphereObjects.Length; i++)
-        {
-            spheres[i] = new Sphere()
-            {
-                position = sphereObjects[i].transform.position,
-                radius = sphereObjects[i].transform.localScale.x * 0.5f,
-                material = sphereObjects[i].material
-            };
-        }
-
-        ShaderHelper.CreateStructuredBuffer(ref sphereBuffer, spheres);
-        rayTracingMaterial.SetBuffer("Spheres", sphereBuffer);
-        rayTracingMaterial.SetInt("numSpheres", sphereBuffer.count);
-    }
-
-    
+   
 
     void CreateMeshes()
     {
-        RayTracingMesh[] meshes = FindObjectsOfType<RayTracingMesh>();
+        BVHObject[] bvhObjects = FindObjectsOfType<BVHObject>();
 
-        allTriangles ??= new List<Triangle>();
-        allMeshInfo ??= new List<MeshInfo>();
+
+        allNodes ??= allNodes = new List<Node>();
+        allTriangles ??= allTriangles = new List<BVHTriangle>();
+        allModels ??= allModels = new List<Model>();
+
+        allNodes.Clear();
         allTriangles.Clear();
-        allMeshInfo.Clear();
+        allModels.Clear();
 
-        for(int i = 0; i < meshes.Length; i++)
+
+        for(int i = 0; i < bvhObjects.Length; i++)
         {
-            MeshChunk[] chunks = meshes[i].GetSubMeshes();
+            BVHObject obj = bvhObjects[i];
+            BVH bvh = obj.bvh;
+            if (obj == null || bvh == null) continue;
 
-            foreach(MeshChunk chunk in chunks)
-            {
-                RayTracingMaterial material = meshes[i].GetMaterial(chunk.subMeshIndex);
-                allMeshInfo.Add(new MeshInfo(allTriangles.Count, chunk.triangles.Length, material, chunk.bounds.min, chunk.bounds.max));
-                allTriangles.AddRange(chunk.triangles);
-            }
+            Model model = new Model(allNodes.Count, allTriangles.Count, obj.material);
+
+            allNodes.AddRange(bvh.AllNodes);
+            allTriangles.AddRange(bvh.AllTriangles);
+            allModels.Add(model);
+
         }
 
-        numMeshChunks = allMeshInfo.Count;
-        numTriangles = allTriangles.Count;  
-
+        ShaderHelper.CreateStructuredBuffer(ref nodeBuffer, allNodes);
         ShaderHelper.CreateStructuredBuffer(ref triangleBuffer, allTriangles);
-        ShaderHelper.CreateStructuredBuffer(ref meshInfoBuffer, allMeshInfo);
-        rayTracingMaterial.SetBuffer("AllTriangles", triangleBuffer);
-        rayTracingMaterial.SetBuffer("AllMeshInfo", meshInfoBuffer);
-        rayTracingMaterial.SetInt("numMeshes", allMeshInfo.Count);
-        
+        ShaderHelper.CreateStructuredBuffer(ref modelBuffer, allModels);
+
+        rayTracingMaterial.SetBuffer("Nodes", nodeBuffer);
+        rayTracingMaterial.SetBuffer("Triangles", triangleBuffer);
+        rayTracingMaterial.SetBuffer("Models", modelBuffer);
+        rayTracingMaterial.SetInt("numModels", allModels.Count);
+
+        rayTracingMaterial.SetFloat("debugVisRays", debugVisRays);
+        rayTracingMaterial.SetInt("enableDebugVisRays", enableDebugVisRays ? 1 : 0);
     }
 
     private void OnDisable()
     {
-        ShaderHelper.Release(sphereBuffer);
         ShaderHelper.Release(triangleBuffer);
-        ShaderHelper.Release(meshInfoBuffer);
+        ShaderHelper.Release(nodeBuffer);
+        ShaderHelper.Release(modelBuffer);
 
         ShaderHelper.Release(resultTexture);
     }

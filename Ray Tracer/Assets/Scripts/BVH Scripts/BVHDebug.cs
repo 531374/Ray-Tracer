@@ -1,6 +1,4 @@
-using System.Collections;
-using System.Collections.Generic;
-using Unity.VisualScripting;
+using UnityEditor.Profiling.Memory.Experimental;
 using UnityEngine;
 
 //This class basically takes the work usually done for every pixel on the GPU
@@ -8,74 +6,88 @@ using UnityEngine;
 public class BVHDebug : MonoBehaviour
 {
     BVH bvh;
-    public Transform rayT;
 
     Mesh mesh;
-    public int debugDepth = 0;
+
+    [Header("Debug Settings")]
+    [SerializeField] bool enableDebugVis = false;
+    [SerializeField] int debugVisRays = 2000;
+    [SerializeField] bool enableDebugBVHRay = false;
+    [SerializeField] bool enableDebugBVHNodes = false;
+    [SerializeField] int bvhDebugDepth = 0;
+
+    [Header("References")]
+    [SerializeField] RayTracingManager manager;
+    [SerializeField] Transform rayT;
+
+    Vector3 lastPosition;
+    Quaternion lastRotation;
+    Vector3 lastScale;
 
     private void OnDrawGizmos()
     {
-        if(bvh == null)
+        if (bvh == null)
         {
-            if(mesh == null) mesh = GetComponent<MeshFilter>().sharedMesh;
-            bvh = new(mesh.vertices, mesh.triangles, transform.position, transform.rotation, transform.lossyScale);
+            if (mesh == null) mesh = GetComponent<MeshFilter>().sharedMesh;
+            //bvh = new BVH(mesh.vertices, mesh.triangles, transform.position, transform.rotation, transform.lossyScale);
+            bvh = GetComponent<BVHObject>().bvh;
         }
 
-        Gizmos.color = Color.red;
-        BVHResult result = RayTriangleTestBVH(bvh.AllNodes[0], new Ray(rayT.position, rayT.forward), new BVHResult());
-
-        if (result.didHit)
+        if (enableDebugBVHRay)
         {
-            Gizmos.color = Color.green;
-            Gizmos.DrawCube(result.node.bounds.CalculateCentre(), result.node.bounds.Max - result.node.bounds.Min);
+            if (rayT == null) return;
+            Gizmos.color = Color.red;
+            BVHResult result = RayTriangleTestBVH(bvh.AllNodes[0], new Ray(rayT.position, rayT.forward), new BVHResult());
+
+            if (result.didHit)
+            {
+                Gizmos.color = Color.green;
+                Gizmos.DrawCube(result.node.CalculateCentre(), result.node.boundsMax - result.node.boundsMin);
+            }
+
+            Gizmos.color = Color.white;
+            Gizmos.DrawLine(rayT.position, rayT.position + rayT.forward * (result.didHit ? result.closestDistance : 10f));
         }
 
-        Gizmos.color = Color.white;
-        Gizmos.DrawLine(rayT.position, rayT.position + rayT.forward * 15f);
-
-        //DrawNodes(bvh.AllNodes[0]);
+        if (enableDebugBVHNodes)
+        {
+            DrawNodes(bvh.AllNodes[0]);
+        }
 
     }
 
     //AI generated function for debugging the BVH
     void DrawNodes(Node node, int depth = 0)
     {
-        if (depth > debugDepth) return;
-
-        // Color based on depth, more visually distinct
-        Color col = Color.HSVToRGB((depth * 0.13f) % 1f, 0.8f, 1f);
-        col.a = depth == debugDepth ? 0.5f : 0.1f;
-        Gizmos.color = col;
-
-        Vector3 center = node.bounds.CalculateCentre();
-        Vector3 size = node.bounds.Max - node.bounds.Min;
-
-        // Slight size boost for visibility
-        Vector3 paddedSize = size + Vector3.one * 0.01f;
-
-        if (depth == debugDepth) Gizmos.DrawCube(center, paddedSize);
-        else Gizmos.DrawWireCube(center, paddedSize);
-
-        // Leaf check
-        if (node.childIndex == 0)
+        if (depth == bvhDebugDepth)
         {
-            // Optional: mark leaves with a small sphere
-            Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.4f);
-            Gizmos.DrawSphere(center, 0.02f);
+            // Color based on depth, more visually distinct
+            Color col = Color.HSVToRGB((depth * 0.13f) % 1f, 0.8f, 1f);
+            Gizmos.color = col;
+
+            //Get bounds properties
+            Vector3 center = node.CalculateCentre();
+            Vector3 size = node.CalculateSize();
+
+            //Draw bounding boxes of debug depth
+            Gizmos.color = col;
+            Gizmos.DrawCube(center, size);
             return;
         }
+
+        if (node.childIndex == 0 || depth + 1 > bvh.maxDepth) return;
 
         // Recurse into children
         DrawNodes(bvh.AllNodes[node.childIndex + 0], depth + 1);
         DrawNodes(bvh.AllNodes[node.childIndex + 1], depth + 1);
     }
 
-    bool RayBoundingBox(Ray ray, BoundingBox bounds)
+    bool RayBoundingBox(Ray ray, Vector3 boundsMin, Vector3 boundsMax)
     {
-        Vector3 invDir = new Vector3(1f/ray.direction.x, 1f/ray.direction.y, 1f/ray.direction.z);
-        Vector3 tMin = Vector3.Scale(bounds.Min - ray.origin, invDir);
+        Vector3 invDir = new Vector3(1f / ray.direction.x, 1f / ray.direction.y, 1f / ray.direction.z);
+        Vector3 tMin = Vector3.Scale(boundsMin - ray.origin, invDir);
 
-        Vector3 tMax = Vector3.Scale(bounds.Max - ray.origin, invDir);
+        Vector3 tMax = Vector3.Scale(boundsMax - ray.origin, invDir);
         Vector3 t1 = Vector3.Min(tMin, tMax);
         Vector3 t2 = Vector3.Max(tMin, tMax);
         float tNear = Mathf.Max(Mathf.Max(t1.x, t1.y), t1.z);
@@ -109,18 +121,18 @@ public class BVHDebug : MonoBehaviour
 
     BVHResult RayTriangleTestBVH(Node node, Ray ray, BVHResult state)
     {
-        bool boundsHit = RayBoundingBox(ray, node.bounds);
+        bool boundsHit = RayBoundingBox(ray, node.boundsMin, node.boundsMax);
 
         if (boundsHit)
         {
             Gizmos.color *= 0.8f;
-            Gizmos.DrawWireCube(node.bounds.CalculateCentre(), node.bounds.Max - node.bounds.Min);
+            Gizmos.DrawWireCube(node.CalculateCentre(), node.CalculateSize());
 
             //Leaf node
             int childIndex = node.childIndex;
             if (childIndex == 0)
             {
-                for(int i = node.firstTriangleIndex; i < node.firstTriangleIndex + node.triangleCount; i++)
+                for (int i = node.firstTriangleIndex; i < node.firstTriangleIndex + node.triangleCount; i++)
                 {
                     BVHTriangle tri = bvh.AllTriangles[i];
 
@@ -145,7 +157,21 @@ public class BVHDebug : MonoBehaviour
 
     private void OnValidate()
     {
-        bvh = new(mesh.vertices, mesh.triangles, transform.position, transform.rotation, transform.lossyScale);
+        //if (transform.position != lastPosition || transform.rotation != lastRotation || transform.lossyScale != lastScale)
+        //{
+        //    if (mesh == null) mesh = GetComponent<MeshFilter>().sharedMesh;
+        //    //bvh = new BVH(mesh.vertices, mesh.triangles, transform.position, transform.rotation, transform.lossyScale);
+        //    bvh = GetComponent<BVHObject>().bvh;
+        //    lastPosition = transform.position;
+        //    lastRotation = transform.rotation;
+        //    lastScale = transform.lossyScale;
+        //}
+
+        bvh = GetComponent<BVHObject>().bvh;
+
+        if (manager == null) return;
+        manager.enableDebugVisRays = enableDebugVis;
+        manager.debugVisRays = debugVisRays;
     }
 }
 

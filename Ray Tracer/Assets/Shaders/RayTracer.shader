@@ -41,35 +41,35 @@ Shader "Custom/RayTracer"
                 float smoothness;
                 float specularProbability;
             };
-            
-            struct Sphere
-            {
-                float3 position;
-                float radius;  
-                RayTracingMaterial material;
-            };
-
-            StructuredBuffer<Sphere> Spheres;
-            int numSpheres;
+           
 
             struct Triangle
             {
                 float3 posA, posB, posC;
                 float3 normalA, normalB, normalC;
+                float3 centre;
             };
 
-            struct MeshInfo
+            struct Node
             {
-                int triangleStartIndex;
-                int triangleCount;
-                RayTracingMaterial material;
                 float3 boundsMin;
                 float3 boundsMax;
+                int firstTriangleIndex;
+                int triangleCount;
+                int childIndex;
             };
 
-            StructuredBuffer<Triangle> AllTriangles;
-            StructuredBuffer<MeshInfo> AllMeshInfo;
-            int numMeshes;
+            struct Model
+            {
+                int nodeOffset;
+                int triangleOffset;
+                RayTracingMaterial material;
+            };
+
+            StructuredBuffer<Triangle> Triangles;
+            StructuredBuffer<Node> Nodes;
+            StructuredBuffer<Model> Models;
+            int numModels;
 
             struct Ray
             {
@@ -163,77 +163,72 @@ Shader "Custom/RayTracer"
                 return tNear <= tFar;
             }
 
-            HitInfo HitSphere(Sphere sphere, Ray ray)
+            HitInfo RayTriangleBVH(Ray ray, int nodeOffset, int triangleOffset, inout int numTriTests)
             {
-                HitInfo hitInfo = (HitInfo)0;
-                float3 offsetRayOrigin = ray.origin - sphere.position;
+                Node stack[32];
+                int stackIndex = 0;
+                stack[stackIndex++] = Nodes[nodeOffset];
 
-                float a = dot(ray.direction, ray.direction);
-                float b = 2.0 * dot(offsetRayOrigin, ray.direction);
-                float c = dot(offsetRayOrigin, offsetRayOrigin) - sphere.radius * sphere.radius;
+                HitInfo result;
+                result.distance = 1.#INF;
 
-                float discriminant = b * b - 4.0 * a * c;
-
-                if(discriminant >= 0)
+                while(stackIndex > 0)
                 {
-                    float dst = (-b - sqrt(discriminant)) / (2.0 * a);
+                    Node node = stack[--stackIndex];
 
-                    if(dst >= 0)
+                    if(RayBoundingBox(ray, node.boundsMin, node.boundsMax))
                     {
-                        hitInfo.didHit = true;
-                        hitInfo.distance = dst;
-                        hitInfo.hitPoint = ray.origin + ray.direction * dst;
-                        hitInfo.normal = normalize(hitInfo.hitPoint - sphere.position);
-                    }
-                }
-
-                return hitInfo;
-            }
-
-            HitInfo CalculateRayCollision(Ray ray, inout uint numTriTests)
-            {
-                HitInfo closestHit = (HitInfo)0;
-
-                closestHit.distance = 1.#INF;
-
-                for(int i = 0; i < numSpheres; i++)
-                {
-                    Sphere sphere = Spheres[i];
-                    HitInfo hitInfo = HitSphere(sphere, ray);
-
-                    if(hitInfo.didHit && hitInfo.distance < closestHit.distance)
-                    {
-                        closestHit = hitInfo;
-                        closestHit.material = sphere.material;
-                    }
-                }
-
-                for(int j = 0; j < numMeshes; j++)
-                {
-                    MeshInfo meshInfo = AllMeshInfo[j];
-                    
-                    if(!RayBoundingBox(ray, meshInfo.boundsMin, meshInfo.boundsMax)) continue;
-
-                    for(int k = 0; k < meshInfo.triangleCount; k++)
-                    {
-                        int triangleIndex = meshInfo.triangleStartIndex + k;
-                        Triangle tri = AllTriangles[triangleIndex];
-                        HitInfo hitInfo = HitTriangle(tri, ray);
-                        numTriTests++;
-
-                        if(hitInfo.didHit && hitInfo.distance < closestHit.distance)
+                        if(node.childIndex == 0)
                         {
-                            closestHit = hitInfo;
-                            closestHit.material = meshInfo.material;
+                            for(int i = 0; i < node.triangleCount; i++)
+                            {
+                                Triangle tri = Triangles[triangleOffset + node.firstTriangleIndex + i];
+                                HitInfo hitInfo = HitTriangle(tri, ray);
+                                numTriTests++;
+
+                                if(hitInfo.didHit && hitInfo.distance < result.distance)
+                                {
+                                    result = hitInfo;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            stack[stackIndex++] = Nodes[nodeOffset + node.childIndex + 0];
+                            stack[stackIndex++] = Nodes[nodeOffset + node.childIndex + 1];
                         }
                     }
                 }
 
-                return closestHit;
+                return result;
+            }
+
+            HitInfo CalculateRayCollision(Ray ray, inout uint numTriTests)
+            {
+                HitInfo result;
+                result.distance = 1.#INF;
+
+                for(int i = 0; i < numModels; i++)
+                {
+                    Model model = Models[i];
+
+                    HitInfo hit = RayTriangleBVH(ray, model.nodeOffset, model.triangleOffset, numTriTests);
+
+                    if(hit.didHit && hit.distance < result.distance)
+                    {
+                        result = hit;
+                        result.material = model.material;
+                    }
+                }
+
+                return result;
             }
 
             int MaxBounceCount;
             int NumRaysPerPixel;
+
+            int enableDebugVisRays;
+            float debugVisRays;
 
             float3 skyColor;
 
@@ -270,9 +265,15 @@ Shader "Custom/RayTracer"
                     }
                 }
 
-                // return incomingLight;
-                float debugVis = numTriTests / 2000.0;
-                return debugVis < 1 ? debugVis : float3(1,0,0);
+                if(enableDebugVisRays == 1)
+                {
+                    float debugVis = numTriTests / debugVisRays;
+                    return debugVis < 1 ? debugVis : float3(1,0,0);
+                }
+                else
+                {
+                    return incomingLight;
+                }
             }
 
             float3 ViewParams;

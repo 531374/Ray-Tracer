@@ -1,10 +1,14 @@
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
+using UnityEditor;
 using UnityEngine;
 
 public class ShaderDebug : MonoBehaviour
 {
+    [SerializeField] Transform obj;
+    [SerializeField] float rotationSpeed;
+
     [SerializeField] TextMeshProUGUI debugText;
 
     RayTracingManager manager;
@@ -12,16 +16,23 @@ public class ShaderDebug : MonoBehaviour
     float startTime;
     int frames = 0;
 
+    const float testTime = 300f;
+
+    int maxBounces;
+    int raysPerPixel;
 
     private void Awake()
     {
         startTime = Time.time;
         manager = RayTracingManager.instance;
+
+        maxBounces = manager.MaxBounceCount;
+        raysPerPixel = manager.numRaysPerPixel;
     }
 
     private void Update()
     {
-        CheckInputs();
+        obj.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
 
         frames++;
         float totalTime = Time.time - startTime;
@@ -29,11 +40,14 @@ public class ShaderDebug : MonoBehaviour
 
         float averageTimePerFrame = totalTime / frames;
 
-        int maxBounces = manager.MaxBounceCount;
-
-        int raysPerPixel = manager.numRaysPerPixel;
-
         debugText.text = $"Avg FPS: {averageFps:F0}\nAvg/Frame: {averageTimePerFrame:F2}\nMax Bounces: {maxBounces}\nRays Per Pixel: {raysPerPixel}";
+
+        if(Time.time - startTime > testTime)
+        {
+            Time.timeScale = 0.0f;
+            EditorApplication.isPaused = true;
+            Debug.Log($"Settings: Rays per Pixel={raysPerPixel}, Max Bounces={maxBounces}\nAverage FPS over {testTime} seconds: {averageFps}");
+        }
     }
 
     void CheckInputs()

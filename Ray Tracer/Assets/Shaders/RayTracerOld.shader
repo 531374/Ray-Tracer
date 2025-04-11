@@ -1,4 +1,4 @@
-Shader "Custom/RayTracer"
+Shader "Custom/RayTracerOld"
 {
     SubShader
     {
@@ -270,9 +270,9 @@ Shader "Custom/RayTracer"
                     }
                 }
 
-                // return incomingLight;
-                float debugVis = numTriTests / 2000.0;
-                return debugVis < 1 ? debugVis : float3(1,0,0);
+                return incomingLight;
+                // float debugVis = numTriTests / 2000.0;
+                // return debugVis < 1 ? debugVis : float3(1,0,0);
             }
 
             float3 ViewParams;

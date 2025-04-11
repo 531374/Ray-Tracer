@@ -15,7 +15,7 @@ public class BVH
     public int maxDepth = 10;
 
     //Construct the bvh
-    public BVH(Vector3[] vertices, int[] indices, Vector3 pos, Quaternion rot, Vector3 scale)
+    public BVH(Vector3[] vertices, int[] indices, Vector3[] normals, Vector3 pos, Quaternion rot, Vector3 scale)
     {
         AllNodes ??= AllNodes = new List<Node>();
         AllNodes.Clear();
@@ -39,9 +39,9 @@ public class BVH
             Vector3 b = PointLocalToWorld(vertices[indices[i + 1]], pos, rot, scale);
             Vector3 c = PointLocalToWorld(vertices[indices[i + 2]], pos, rot, scale);
 
-            Vector3 normalA = DirectionLocalToWorld(vertices[indices[i + 0]], rot);
-            Vector3 normalB = DirectionLocalToWorld(vertices[indices[i + 1]], rot);
-            Vector3 normalC = DirectionLocalToWorld(vertices[indices[i + 2]], rot);
+            Vector3 normalA = DirectionLocalToWorld(normals[indices[i + 0]], rot);
+            Vector3 normalB = DirectionLocalToWorld(normals[indices[i + 1]], rot);
+            Vector3 normalC = DirectionLocalToWorld(normals[indices[i + 2]], rot);
 
             AllTriangles.Add(new BVHTriangle(a, b, c, normalA, normalB, normalC));
         }
@@ -59,7 +59,7 @@ public class BVH
 
         //Find the best way to split the node
         (int splitAxis, float splitPos, float bestCost) = ChooseSplit(parent, start, numTris);
-        float nodeCost = NodeCost(parent.bounds.CalculateSize(), numTris);
+        float nodeCost = NodeCost(parent.CalculateSize(), numTris);
 
         //Make node a leaf
         if (depth == maxDepth || nodeCost < bestCost)
@@ -130,7 +130,7 @@ public class BVH
             {
                 //Try different split points and save the best
                 float splitT = (i + 1) / (splitTests + 1f);
-                float splitPos = Mathf.Lerp(parent.bounds.Min[axis], parent.bounds.Max[axis], splitT);
+                float splitPos = Mathf.Lerp(parent.boundsMin[axis], parent.boundsMax[axis], splitT);
                 float cost = EvaluateSplit(axis, splitPos, start, count);
 
                 if(cost < bestCost)
@@ -189,6 +189,6 @@ public class BVH
 
     static Vector3 DirectionLocalToWorld(Vector3 direction, Quaternion rotation)
     {
-        return rotation * direction;
+        return Vector3.Normalize(rotation * direction);
     }
 }

@@ -19,10 +19,10 @@ public class RayTracingMesh : MonoBehaviour
 
     public MeshChunk[] GetSubMeshes()
     {
-        if (mesh.triangles.Length / 3 > RayTracingManager.TriangleLimit)
-        {
-            throw new System.Exception($"Too many triangles :(");
-        }
+        //if (mesh.triangles.Length / 3 > RayTracingManager.TriangleLimit)
+        //{
+        //    throw new System.Exception($"Too many triangles :(");
+        //}
 
         if (meshFilter != null && (mesh != meshFilter.sharedMesh || localChunks == null || localChunks.Length == 0))
         {
