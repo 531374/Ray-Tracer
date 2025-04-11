@@ -39,56 +39,85 @@ public class BVH
             Vector3 b = PointLocalToWorld(vertices[indices[i + 1]], pos, rot, scale);
             Vector3 c = PointLocalToWorld(vertices[indices[i + 2]], pos, rot, scale);
 
-            AllTriangles.Add(new BVHTriangle(a, b, c));
+            Vector3 normalA = DirectionLocalToWorld(vertices[indices[i + 0]], rot);
+            Vector3 normalB = DirectionLocalToWorld(vertices[indices[i + 1]], rot);
+            Vector3 normalC = DirectionLocalToWorld(vertices[indices[i + 2]], rot);
+
+            AllTriangles.Add(new BVHTriangle(a, b, c, normalA, normalB, normalC));
         }
 
         //Start recursively splitting the mesh
-        Node root = new Node() { bounds = bounds, firstTriangleIndex = 0, triangleCount = AllTriangles.Count};
+        Node root = new Node(bounds, 0, AllTriangles.Count, 0);
         AllNodes.Add(root);
 
-        Split(root);
+        Split(0, 0, AllTriangles.Count);
     }
 
-    void Split(Node parent, int depth = 0)
+    void Split(int parentIndex, int start, int numTris, int depth = 0)
     {
-        if (depth == maxDepth) return;
+        Node parent = AllNodes[parentIndex];
 
         //Find the best way to split the node
-        (int splitAxis, float splitPos) = ChooseSplit(parent, parent.firstTriangleIndex, parent.triangleCount);
+        (int splitAxis, float splitPos, float bestCost) = ChooseSplit(parent, start, numTris);
+        float nodeCost = NodeCost(parent.bounds.CalculateSize(), numTris);
 
-        //Create children
-        parent.childIndex = AllNodes.Count;
-        Node childA = new Node() { firstTriangleIndex = parent.firstTriangleIndex };
-        Node childB = new Node() { firstTriangleIndex = parent.firstTriangleIndex };
-        AllNodes.Add(childA);
-        AllNodes.Add(childB);
+        //Make node a leaf
+        if (depth == maxDepth || nodeCost < bestCost)
+        {
+            //Debug.Log($"Made leaf with {numTris} triangles");
+            parent.firstTriangleIndex = start;
+            parent.triangleCount = numTris;
+            AllNodes[parentIndex] = parent;
+            return;
+        }
+
+        BoundingBox boundsA = new();
+        BoundingBox boundsB = new();
+
+        int numTrisA = 0;
+        int numTrisB = 0;
         
         //Sort triangles into correct new child
-        for (int i = parent.firstTriangleIndex; i < parent.firstTriangleIndex + parent.triangleCount; i++)
+        for (int i = start; i < start + numTris; i++)
         {
-            bool isSideA = AllTriangles[i].centre[splitAxis] < splitPos;
+            BVHTriangle tri = AllTriangles[i];
+            bool isSideA = tri.centre[splitAxis] < splitPos;
 
-            Node child = isSideA ? childA : childB;
-            child.bounds.GrowToInclude(AllTriangles[i]);
-            child.triangleCount++;
-
-            //Sort the indices of the triangles correctly
             if (isSideA)
             {
-                int swap = child.firstTriangleIndex + child.triangleCount - 1;
-                (AllTriangles[i], AllTriangles[swap]) = (AllTriangles[swap], AllTriangles[i]);
-                childB.firstTriangleIndex++;
+                boundsA.GrowToInclude(tri);
+                
+                BVHTriangle swap = AllTriangles[parent.firstTriangleIndex + numTrisA];
+                AllTriangles[parent.firstTriangleIndex + numTrisA] = tri;
+                AllTriangles[i] = swap;
+
+                numTrisA++;
+            }
+            else
+            {
+                boundsB.GrowToInclude(tri);
+                numTrisB++;
             }
         }
 
+        parent.childIndex = AllNodes.Count;
+        AllNodes[parentIndex] = parent;
+
+        AllNodes.Add(new Node(boundsA, start));
+        AllNodes.Add(new Node(boundsB, start + numTrisA));
+
+        //Debug.Log(numTrisA + " " + numTrisB);
+
         //Split again
-        Split(AllNodes[parent.childIndex + 0], depth + 1);
-        Split(AllNodes[parent.childIndex + 1], depth + 1);
+        Split(parent.childIndex + 0, start, numTrisA, depth + 1);
+        Split(parent.childIndex + 1, start + numTrisA, numTrisB, depth + 1);
     }
 
     //Functions finds the best axis and position to split over
-    (int, float) ChooseSplit(Node parent, int start, int count)
+    (int, float, float) ChooseSplit(Node parent, int start, int count)
     {
+        if (count <= 1) return (0, 0, float.PositiveInfinity);
+
         float bestSplitPos = 0;
         int bestSplitAxis = 0;
         const int splitTests = 5;
@@ -113,7 +142,7 @@ public class BVH
             }
         }
 
-        return (bestSplitAxis, bestSplitPos);
+        return (bestSplitAxis, bestSplitPos, bestCost);
 
     }
 
@@ -140,8 +169,8 @@ public class BVH
             }
         }
 
-        float costA = NodeCost(boundsLeft.Size, numOnLeft);
-        float costB = NodeCost(boundsRight.Size, numOnRight);
+        float costA = NodeCost(boundsLeft.CalculateSize(), numOnLeft);
+        float costB = NodeCost(boundsRight.CalculateSize(), numOnRight);
         return costA + costB;
 
     }

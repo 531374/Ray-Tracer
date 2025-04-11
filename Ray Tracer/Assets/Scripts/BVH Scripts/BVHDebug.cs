@@ -24,27 +24,48 @@ public class BVHDebug : MonoBehaviour
         Gizmos.color = Color.red;
         BVHResult result = RayTriangleTestBVH(bvh.AllNodes[0], new Ray(rayT.position, rayT.forward), new BVHResult());
 
-        if(result.didHit && result.node != null)
+        if (result.didHit)
         {
             Gizmos.color = Color.green;
-            Gizmos.DrawCube(result.node.bounds.Centre, result.node.bounds.Max - result.node.bounds.Min);
+            Gizmos.DrawCube(result.node.bounds.CalculateCentre(), result.node.bounds.Max - result.node.bounds.Min);
         }
 
         Gizmos.color = Color.white;
         Gizmos.DrawLine(rayT.position, rayT.position + rayT.forward * 15f);
+
+        //DrawNodes(bvh.AllNodes[0]);
+
     }
 
+    //AI generated function for debugging the BVH
     void DrawNodes(Node node, int depth = 0)
     {
-        if (depth > debugDepth || node == null) return;
+        if (depth > debugDepth) return;
 
-        Color col = Color.HSVToRGB(depth / 6f % 1, 1, 1);
-        if (depth < debugDepth) col.a = 0.15f;
-        bool fill = depth == debugDepth;
+        // Color based on depth, more visually distinct
+        Color col = Color.HSVToRGB((depth * 0.13f) % 1f, 0.8f, 1f);
+        col.a = depth == debugDepth ? 0.5f : 0.1f;
+        Gizmos.color = col;
 
-        if (fill) Gizmos.DrawCube(node.bounds.Centre, node.bounds.Max - node.bounds.Min);
-        else Gizmos.DrawWireCube(node.bounds.Centre, node.bounds.Max - node.bounds.Min);
+        Vector3 center = node.bounds.CalculateCentre();
+        Vector3 size = node.bounds.Max - node.bounds.Min;
 
+        // Slight size boost for visibility
+        Vector3 paddedSize = size + Vector3.one * 0.01f;
+
+        if (depth == debugDepth) Gizmos.DrawCube(center, paddedSize);
+        else Gizmos.DrawWireCube(center, paddedSize);
+
+        // Leaf check
+        if (node.childIndex == 0)
+        {
+            // Optional: mark leaves with a small sphere
+            Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.4f);
+            Gizmos.DrawSphere(center, 0.02f);
+            return;
+        }
+
+        // Recurse into children
         DrawNodes(bvh.AllNodes[node.childIndex + 0], depth + 1);
         DrawNodes(bvh.AllNodes[node.childIndex + 1], depth + 1);
     }
@@ -93,11 +114,11 @@ public class BVHDebug : MonoBehaviour
         if (boundsHit)
         {
             Gizmos.color *= 0.8f;
-            Gizmos.DrawWireCube(node.bounds.Centre, node.bounds.Max - node.bounds.Min);
+            Gizmos.DrawWireCube(node.bounds.CalculateCentre(), node.bounds.Max - node.bounds.Min);
 
             //Leaf node
             int childIndex = node.childIndex;
-            if (childIndex == -1)
+            if (childIndex == 0)
             {
                 for(int i = node.firstTriangleIndex; i < node.firstTriangleIndex + node.triangleCount; i++)
                 {

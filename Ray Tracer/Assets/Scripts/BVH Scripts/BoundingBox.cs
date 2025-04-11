@@ -2,17 +2,29 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class BoundingBox
+public struct BoundingBox
 {
-    public Vector3 Min = Vector3.one * float.PositiveInfinity;
-    public Vector3 Max = Vector3.one * float.NegativeInfinity;
-    public Vector3 Centre => (Min + Max) * 0.5f;
-    public Vector3 Size => Max - Min;
+    public Vector3 Min;
+    public Vector3 Max;
+    public Vector3 CalculateCentre() => (Min + Max) * 0.5f;
+    public Vector3 CalculateSize() => Max - Min;
+
+    bool hasPoint;
 
     public void GrowToInclude(Vector3 point)
     {
-        Min = Vector3.Min(Min, point);
-        Max = Vector3.Max(Max, point);
+        if (!hasPoint)
+        {
+            hasPoint = true;
+            Min = point;
+            Max = point;
+        }
+        else
+        {
+            Min = Vector3.Min(Min, point);
+            Max = Vector3.Max(Max, point);
+        }
+
     }
 
     public void GrowToInclude(BVHTriangle tri)
