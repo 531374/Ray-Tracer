@@ -47,7 +47,6 @@ Shader "Custom/RayTracer"
             {
                 float3 posA, posB, posC;
                 float3 normalA, normalB, normalC;
-                float3 centre;
             };
 
             struct Node
@@ -63,7 +62,9 @@ Shader "Custom/RayTracer"
             {
                 int nodeOffset;
                 int triangleOffset;
-                RayTracingMaterial material;
+                float4x4 worldToLocalMatrix;
+                float4x4 localToWorldMatrix;
+                RayTracingMaterial material;    
             };
 
             StructuredBuffer<Triangle> Triangles;
@@ -196,20 +197,20 @@ Shader "Custom/RayTracer"
                         Node childA = Nodes[childIndex + 0];
                         Node childB = Nodes[childIndex + 1];
 
-                        stats[0] += 2;
                         float dstA = RayBoundingBox(ray, childA.boundsMin, childA.boundsMax);
                         float dstB = RayBoundingBox(ray, childB.boundsMin, childB.boundsMax);
+                        stats[0] += 2;
 
                         //The closest distance should be pushed last, so it can be processed first
                         if(dstA < dstB)
                         {
-                            if(dstB < result.distance) stack[stackIndex++] = childIndex + 1;
-                            if(dstA < result.distance) stack[stackIndex++] = childIndex + 0;
+                            if(dstB < result.distance) stack[stackIndex++] = childIndex + 1; //Far
+                            if(dstA < result.distance) stack[stackIndex++] = childIndex + 0; //Near
                         }
                         else
                         {
-                            if(dstA < result.distance) stack[stackIndex++] = childIndex + 0;
-                            if(dstB < result.distance) stack[stackIndex++] = childIndex + 1;
+                            if(dstA < result.distance) stack[stackIndex++] = childIndex + 0; //Far
+                            if(dstB < result.distance) stack[stackIndex++] = childIndex + 1; //Near
                         }
 
                     }
@@ -219,7 +220,7 @@ Shader "Custom/RayTracer"
                 return result;
             }
 
-            HitInfo CalculateRayCollision(Ray ray, inout uint2 stats)
+            HitInfo CalculateRayCollision(Ray worldRay, inout uint2 stats)
             {
                 HitInfo result;
                 result.distance = 1.#INF;
@@ -228,12 +229,19 @@ Shader "Custom/RayTracer"
                 {
                     Model model = Models[i];
 
+                    Ray ray;
+                    ray.origin = mul(model.worldToLocalMatrix, float4(worldRay.origin, 1));
+                    ray.direction = mul(model.worldToLocalMatrix, float4(worldRay.direction, 0));
+                    ray.inverseDirection = 1 / ray.direction;
+
                     HitInfo hit = RayTriangleBVH(ray, model.nodeOffset, model.triangleOffset, stats);
 
                     if(hit.didHit && hit.distance < result.distance)
                     {
                         result = hit;
                         result.material = model.material;
+                        result.normal = normalize(mul(model.localToWorldMatrix, float4(hit.normal, 0)));
+                        result.hitPoint = worldRay.origin + worldRay.direction * hit.distance;
                     }
                 }
 
@@ -244,7 +252,8 @@ Shader "Custom/RayTracer"
             int NumRaysPerPixel;
 
             int debugMode;
-            float debugVisScale;
+            float triangleDebugScale;
+            float boxDebugScale;
 
             float3 skyColor;
 
@@ -253,6 +262,7 @@ Shader "Custom/RayTracer"
                 float3 incomingLight = 0;
                 float3 rayColor = 1;
                 uint2 stats = uint2(0, 0);
+
 
                 for(int i = 0; i <= MaxBounceCount; i++)
                 {
@@ -273,7 +283,14 @@ Shader "Custom/RayTracer"
                         float3 emittedLight = material.emissionColor * material.emissionStrength;
                         incomingLight += emittedLight * rayColor;
                         rayColor *= material.color;
-                        if(dot(rayColor,1) < 0.0001) break; //Exit early if contribution is too low
+                        
+                        float p = max(rayColor.r, max(rayColor.g, rayColor.b));
+                        if(RandomValue(rngState) >= p)
+                        {
+                            break;
+                        }
+
+                        rayColor *= 1.0/p;
                     }
                     else
                     {
@@ -282,14 +299,16 @@ Shader "Custom/RayTracer"
                     }
                 }
 
+                //Box debug mode
                 if(debugMode == 1)
                 {
-                    float debugVis = stats[0] / debugVisScale;
-                    return debugVis < 1 ? debugVis : float3(1,0,0);
+                    float debugVis = stats[0] / boxDebugScale;
+                    return debugVis < 1 ? debugVis: float3(1,0,0);
                 }
+                //Triangle debug mode
                 else if(debugMode == 2)
                 {
-                    float debugVis = stats[1] / debugVisScale;
+                    float debugVis = stats[1] / triangleDebugScale;
                     return debugVis < 1 ? debugVis : float3(1, 0, 0);
                 }
                 else
@@ -316,7 +335,6 @@ Shader "Custom/RayTracer"
                 Ray ray;
                 ray.origin = _WorldSpaceCameraPos;
                 ray.direction = normalize(viewPoint - ray.origin);
-                ray.inverseDirection = 1 / ray.direction;
 
                 float3 totalIncomingLight = 0;
 

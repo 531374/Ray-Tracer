@@ -4,26 +4,16 @@ using UnityEngine;
 
 public struct BVHTriangle
 {
-    public Vector3 posA;
-    public Vector3 posB;
-    public Vector3 posC;
+    public Vector3 Centre;
+    public Vector3 Min;
+    public Vector3 Max;
+    public int Index;
 
-    public Vector3 normalA;
-    public Vector3 normalB;
-    public Vector3 normalC;
-
-    public Vector3 centre;
-
-    public BVHTriangle(Vector3 posA, Vector3 posB, Vector3 posC, Vector3 normalA, Vector3 normalB, Vector3 normalC)
+    public BVHTriangle(Vector3 centre, Vector3 min, Vector3 max, int index)
     {
-        this.posA = posA;   
-        this.posB = posB;
-        this.posC = posC;
-
-        this.normalA = normalA;
-        this.normalB = normalB;
-        this.normalC = normalC;
-
-        centre = (posA + posB + posC) / 3f; 
+        this.Centre = centre;
+        this.Min = min;
+        this.Max = max;
+        this.Index = index;
     }
 }

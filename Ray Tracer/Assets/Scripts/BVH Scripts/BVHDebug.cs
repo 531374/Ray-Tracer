@@ -5,32 +5,25 @@ using UnityEngine;
 //And does it on the CPU for one ray for easy debugging and visualizing
 public class BVHDebug : MonoBehaviour
 {
+    [SerializeField] BVHObject obj;
     BVH bvh;
 
     Mesh mesh;
 
     [Header("Debug Settings")]
-    [SerializeField, Range(0, 2)] int debugMode = 0;
-    [SerializeField] int debugVisScale = 50;
     [SerializeField] bool enableDebugBVHRay = false;
     [SerializeField] bool enableDebugBVHNodes = false;
     [SerializeField] int bvhDebugDepth = 0;
 
     [Header("References")]
-    [SerializeField] RayTracingManager manager;
     [SerializeField] Transform rayT;
-
-    Vector3 lastPosition;
-    Quaternion lastRotation;
-    Vector3 lastScale;
 
     private void OnDrawGizmos()
     {
         if (bvh == null)
         {
             if (mesh == null) mesh = GetComponent<MeshFilter>().sharedMesh;
-            //bvh = new BVH(mesh.vertices, mesh.triangles, transform.position, transform.rotation, transform.lossyScale);
-            bvh = GetComponent<BVHObject>().bvh;
+            bvh = new BVH(mesh.vertices, mesh.triangles, mesh.normals, transform.position, transform.rotation, transform.lossyScale);
         }
 
         if (enableDebugBVHRay)
@@ -59,23 +52,29 @@ public class BVHDebug : MonoBehaviour
     //AI generated function for debugging the BVH
     void DrawNodes(Node node, int depth = 0)
     {
-        if (depth == bvhDebugDepth)
+
+        // Color based on depth, more visually distinct
+        Color col = Color.HSVToRGB((depth * 0.13f) % 1f, 0.8f, 1f);
+        Gizmos.color = col;
+
+        //Get bounds properties
+        Vector3 center = node.CalculateCentre();
+        Vector3 size = node.CalculateSize();
+
+        //Draw bounding boxes of debug depth
+        Gizmos.color = col;
+        
+        if(depth == bvhDebugDepth)
         {
-            // Color based on depth, more visually distinct
-            Color col = Color.HSVToRGB((depth * 0.13f) % 1f, 0.8f, 1f);
-            Gizmos.color = col;
-
-            //Get bounds properties
-            Vector3 center = node.CalculateCentre();
-            Vector3 size = node.CalculateSize();
-
-            //Draw bounding boxes of debug depth
-            Gizmos.color = col;
             Gizmos.DrawCube(center, size);
-            return;
+        }
+        else
+        {
+            Gizmos.DrawWireCube(center, size);
         }
 
-        if (node.childIndex == 0 || depth + 1 > bvh.maxDepth) return;
+
+        if (node.childIndex == 0 || depth + 1 > bvhDebugDepth) return;
 
         // Recurse into children
         DrawNodes(bvh.AllNodes[node.childIndex + 0], depth + 1);
@@ -95,7 +94,7 @@ public class BVHDebug : MonoBehaviour
         return tNear <= tFar;
     }
 
-    HitInfo HitTriangle(Ray ray, BVHTriangle tri)
+    HitInfo HitTriangle(Ray ray, Triangle tri)
     {
         Vector3 edgeAB = tri.posB - tri.posA;
         Vector3 edgeAC = tri.posC - tri.posA;
@@ -134,7 +133,7 @@ public class BVHDebug : MonoBehaviour
             {
                 for (int i = node.firstTriangleIndex; i < node.firstTriangleIndex + node.triangleCount; i++)
                 {
-                    BVHTriangle tri = bvh.AllTriangles[i];
+                    Triangle tri = bvh.AllTriangles[i];
 
                     HitInfo hitInfo = HitTriangle(ray, tri);
                     if (hitInfo.didHit && hitInfo.distance < state.closestDistance)
@@ -167,11 +166,7 @@ public class BVHDebug : MonoBehaviour
         //    lastScale = transform.lossyScale;
         //}
 
-        bvh = GetComponent<BVHObject>().bvh;
-
-        if (manager == null) return;
-        manager.debugMode = debugMode;
-        manager.debugVisScale = debugVisScale;
+        //bvh = GetComponent<BVHObject>().bvh;
     }
 }
 
@@ -180,7 +175,7 @@ public struct BVHResult
     public bool didHit;
     public float closestDistance;
     public Node node;
-    public BVHTriangle triangle;
+    public Triangle triangle;
 }
 
 struct HitInfo

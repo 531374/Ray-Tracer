@@ -11,26 +11,19 @@ public struct BoundingBox
 
     bool hasPoint;
 
-    public void GrowToInclude(Vector3 point)
+    public void GrowToInclude(Vector3 min, Vector3 max)
     {
         if (!hasPoint)
         {
             hasPoint = true;
-            Min = point;
-            Max = point;
+            Min = min;
+            Max = max;
         }
         else
         {
-            Min = Vector3.Min(Min, point);
-            Max = Vector3.Max(Max, point);
+            Min = Vector3.Min(Min, min);
+            Max = Vector3.Max(Max, max);
         }
 
-    }
-
-    public void GrowToInclude(BVHTriangle tri)
-    {
-        GrowToInclude(tri.posA);
-        GrowToInclude(tri.posB);
-        GrowToInclude(tri.posC);
     }
 }

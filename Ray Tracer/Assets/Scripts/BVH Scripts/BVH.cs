@@ -10,109 +10,123 @@ using UnityEngine.UIElements;
 public class BVH
 {
     public List<Node> AllNodes;
-    public List<BVHTriangle> AllTriangles;
 
-    public int maxDepth = 16;
+    public Triangle[] AllTriangles;
+    public BVHTriangle[] BuildTriangles;
 
     //Construct the bvh
     public BVH(Vector3[] vertices, int[] indices, Vector3[] normals, Vector3 pos, Quaternion rot, Vector3 scale)
     {
-        AllNodes ??= AllNodes = new List<Node>();
-        AllNodes.Clear();
+        AllNodes = new List<Node>();
 
-        AllTriangles ??= AllTriangles = new List<BVHTriangle>();
-        AllTriangles.Clear();
 
+        BuildTriangles = new BVHTriangle[indices.Length / 3];
         BoundingBox bounds = new();
 
-        //Create initial bounding box
-        foreach(Vector3 vert in vertices)
-        {
-            Vector3 worldVert = PointLocalToWorld(vert, pos, rot, scale);
-            bounds.GrowToInclude(worldVert);
-        }
+        for (int i = 0; i < indices.Length; i += 3)
+        {   
+            Vector3 a = vertices[indices[i + 0]];
+            Vector3 b = vertices[indices[i + 1]];
+            Vector3 c = vertices[indices[i + 2]];
 
-        //Add all world space triangles to list
-        for(int i = 0; i < indices.Length; i+=3)
-        {
-            Vector3 a = PointLocalToWorld(vertices[indices[i + 0]], pos, rot, scale);
-            Vector3 b = PointLocalToWorld(vertices[indices[i + 1]], pos, rot, scale);
-            Vector3 c = PointLocalToWorld(vertices[indices[i + 2]], pos, rot, scale);
+            Vector3 centre = (a + b + c) / 3f;
 
-            Vector3 normalA = DirectionLocalToWorld(normals[indices[i + 0]], rot);
-            Vector3 normalB = DirectionLocalToWorld(normals[indices[i + 1]], rot);
-            Vector3 normalC = DirectionLocalToWorld(normals[indices[i + 2]], rot);
+            Vector3 max = Vector3.Max(a, Vector3.Max(b, c));
+            Vector3 min = Vector3.Min(a, Vector3.Min(b, c));
 
-            AllTriangles.Add(new BVHTriangle(a, b, c, normalA, normalB, normalC));
+            BuildTriangles[i / 3] = new BVHTriangle(centre, min, max, i);
+            bounds.GrowToInclude(min, max);
         }
 
 
         //Start recursively splitting the mesh
-        Node root = new Node(bounds, 0, AllTriangles.Count, 0);
+        Node root = new Node(bounds);
         AllNodes.Add(root);
 
-        //Don't actually construct a bvh if triangle count is too low
-        if (AllTriangles.Count < 100) return;
+        Split(0, 0, BuildTriangles.Length);
 
-        Split(0, 0, AllTriangles.Count);
+
+        AllTriangles = new Triangle[BuildTriangles.Length];
+
+        for(int i = 0; i < AllTriangles.Length; i++)
+        {
+            BVHTriangle buildTriangle = BuildTriangles[i];
+
+            Vector3 a = vertices[indices[buildTriangle.Index + 0]];
+            Vector3 b = vertices[indices[buildTriangle.Index + 1]];
+            Vector3 c = vertices[indices[buildTriangle.Index + 2]];
+
+            Vector3 normalA = normals[indices[buildTriangle.Index + 0]];
+            Vector3 normalB = normals[indices[buildTriangle.Index + 1]];
+            Vector3 normalC = normals[indices[buildTriangle.Index + 2]];
+
+            AllTriangles[i] = new Triangle(a, b, c, normalA, normalB, normalC);
+        }      
     }
 
     void Split(int parentIndex, int start, int numTris, int depth = 0)
     {
         Node parent = AllNodes[parentIndex];
+        Vector3 size = parent.CalculateSize();
+        const int maxDepth = 32;
+
+        float parentCost = NodeCost(size, numTris);
 
         //Find the best way to split the node
         (int splitAxis, float splitPos, float bestCost) = ChooseSplit(parent, start, numTris);
-        float nodeCost = NodeCost(parent.CalculateSize(), numTris);
 
-        //Make node a leaf
-        if (depth == maxDepth || nodeCost < bestCost)
+        if (bestCost < parentCost && depth < maxDepth)
         {
-            //Debug.Log($"Made leaf with {numTris} triangles");
+            BoundingBox boundsA = new();
+            BoundingBox boundsB = new();
+            int numTrisA = 0;
+
+            for(int i = start; i < start + numTris; i++)
+            {
+                BVHTriangle triangle = BuildTriangles[i];
+                if(triangle.Centre[splitAxis] < splitPos)
+                {
+                    boundsA.GrowToInclude(triangle.Min, triangle.Max);
+
+                    BVHTriangle swap = BuildTriangles[start + numTrisA];
+                    BuildTriangles[start + numTrisA] = triangle;
+                    BuildTriangles[i] = swap;
+
+                    numTrisA++;
+                }
+                else
+                {
+                    boundsB.GrowToInclude(triangle.Min, triangle.Max);
+                }
+            }
+
+            int numTrisB = numTris - numTrisA;
+
+            int firstTriangleA = start;
+            int firstTriangleB = start + numTrisA;
+
+            int childIndex = AllNodes.Count;
+
+            Node childA = new Node(boundsA, firstTriangleA, 0);
+            Node childB = new Node(boundsB, firstTriangleB, 0);
+
+            AllNodes.Add(childA);
+            AllNodes.Add(childB);
+
+            parent.childIndex = childIndex;
             parent.firstTriangleIndex = start;
+
+            AllNodes[parentIndex] = parent;
+
+            Split(childIndex + 0, firstTriangleA, numTrisA, depth + 1);
+            Split(childIndex + 1, firstTriangleB, numTrisB, depth + 1);
+        }
+        else
+        {
+            parent.childIndex = 0;
             parent.triangleCount = numTris;
             AllNodes[parentIndex] = parent;
-            return;
         }
-
-        BoundingBox boundsA = new();
-        BoundingBox boundsB = new();
-
-        int numTrisA = 0;
-        int numTrisB = 0;
-        
-        //Sort triangles into correct new child
-        for (int i = start; i < start + numTris; i++)
-        {
-            BVHTriangle tri = AllTriangles[i];
-            bool isSideA = tri.centre[splitAxis] < splitPos;
-
-            if (isSideA)
-            {
-                boundsA.GrowToInclude(tri);
-                
-                BVHTriangle swap = AllTriangles[parent.firstTriangleIndex + numTrisA];
-                AllTriangles[parent.firstTriangleIndex + numTrisA] = tri;
-                AllTriangles[i] = swap;
-
-                numTrisA++;
-            }
-            else
-            {
-                boundsB.GrowToInclude(tri);
-                numTrisB++;
-            }
-        }
-
-        parent.childIndex = AllNodes.Count;
-        AllNodes[parentIndex] = parent;
-
-        AllNodes.Add(new Node(boundsA, start));
-        AllNodes.Add(new Node(boundsB, start + numTrisA));
-
-        //Split again
-        Split(parent.childIndex + 0, start, numTrisA, depth + 1);
-        Split(parent.childIndex + 1, start + numTrisA, numTrisB, depth + 1);
     }
 
     //Functions finds the best axis and position to split over
@@ -135,7 +149,7 @@ public class BVH
                 float splitPos = Mathf.Lerp(parent.boundsMin[axis], parent.boundsMax[axis], splitT);
                 float cost = EvaluateSplit(axis, splitPos, start, count);
 
-                if(cost < bestCost)
+                if (cost < bestCost)
                 {
                     bestCost = cost;
                     bestSplitPos = splitPos;
@@ -143,7 +157,6 @@ public class BVH
                 }
             }
         }
-
         return (bestSplitAxis, bestSplitPos, bestCost);
 
     }
@@ -158,15 +171,15 @@ public class BVH
 
         for (int i = start; i < start + count; i++)
         {
-            BVHTriangle tri = AllTriangles[i];
-            if (tri.centre[splitAxis] < splitPos)
+            BVHTriangle tri = BuildTriangles[i];
+            if (tri.Centre[splitAxis] < splitPos)
             {
-                boundsLeft.GrowToInclude(tri);
+                boundsLeft.GrowToInclude(tri.Min, tri.Max);
                 numOnLeft++;
             }
             else
             {
-                boundsRight.GrowToInclude(tri);
+                boundsRight.GrowToInclude(tri.Min, tri.Max);
                 numOnRight++;
             }
         }
