@@ -10,8 +10,8 @@ public class BVHDebug : MonoBehaviour
     Mesh mesh;
 
     [Header("Debug Settings")]
-    [SerializeField] bool enableDebugVis = false;
-    [SerializeField] int debugVisRays = 2000;
+    [SerializeField, Range(0, 2)] int debugMode = 0;
+    [SerializeField] int debugVisScale = 50;
     [SerializeField] bool enableDebugBVHRay = false;
     [SerializeField] bool enableDebugBVHNodes = false;
     [SerializeField] int bvhDebugDepth = 0;
@@ -170,8 +170,8 @@ public class BVHDebug : MonoBehaviour
         bvh = GetComponent<BVHObject>().bvh;
 
         if (manager == null) return;
-        manager.enableDebugVisRays = enableDebugVis;
-        manager.debugVisRays = debugVisRays;
+        manager.debugMode = debugMode;
+        manager.debugVisScale = debugVisScale;
     }
 }
 

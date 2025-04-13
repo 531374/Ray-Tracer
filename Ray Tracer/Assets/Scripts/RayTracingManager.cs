@@ -37,8 +37,8 @@ public class RayTracingManager : MonoBehaviour
     [SerializeField] int numMeshChunks;
     [SerializeField] int numTriangles;
 
-    [HideInInspector] public int debugVisRays = 2000;
-    [HideInInspector] public bool enableDebugVisRays = false;
+    [HideInInspector] public int debugVisScale = 2000;
+    [HideInInspector] public int debugMode = 0;
 
     public static RayTracingManager instance;
 
@@ -170,8 +170,8 @@ public class RayTracingManager : MonoBehaviour
         rayTracingMaterial.SetBuffer("Models", modelBuffer);
         rayTracingMaterial.SetInt("numModels", allModels.Count);
 
-        rayTracingMaterial.SetFloat("debugVisRays", debugVisRays);
-        rayTracingMaterial.SetInt("enableDebugVisRays", enableDebugVisRays ? 1 : 0);
+        rayTracingMaterial.SetFloat("debugVisScale", debugVisScale);
+        rayTracingMaterial.SetInt("debugMode", debugMode);
     }
 
     private void OnDisable()

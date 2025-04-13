@@ -163,19 +163,20 @@ Shader "Custom/RayTracer"
                 return tNear <= tFar;
             }
 
-            HitInfo RayTriangleBVH(Ray ray, int nodeOffset, int triangleOffset, inout int numTriTests)
+            HitInfo RayTriangleBVH(Ray ray, int nodeOffset, int triangleOffset, inout int2 stats)
             {
-                Node stack[32];
+                int stack[32];
                 int stackIndex = 0;
-                stack[stackIndex++] = Nodes[nodeOffset];
+                stack[stackIndex++] = nodeOffset;
 
                 HitInfo result;
                 result.distance = 1.#INF;
 
                 while(stackIndex > 0)
                 {
-                    Node node = stack[--stackIndex];
+                    Node node = Nodes[stack[--stackIndex]];
 
+                    stats[0]++;
                     if(RayBoundingBox(ray, node.boundsMin, node.boundsMax))
                     {
                         if(node.childIndex == 0)
@@ -184,7 +185,7 @@ Shader "Custom/RayTracer"
                             {
                                 Triangle tri = Triangles[triangleOffset + node.firstTriangleIndex + i];
                                 HitInfo hitInfo = HitTriangle(tri, ray);
-                                numTriTests++;
+                                stats[1]++;
 
                                 if(hitInfo.didHit && hitInfo.distance < result.distance)
                                 {
@@ -194,8 +195,8 @@ Shader "Custom/RayTracer"
                         }
                         else
                         {
-                            stack[stackIndex++] = Nodes[nodeOffset + node.childIndex + 0];
-                            stack[stackIndex++] = Nodes[nodeOffset + node.childIndex + 1];
+                            stack[stackIndex++] = nodeOffset + node.childIndex + 0;
+                            stack[stackIndex++] = nodeOffset + node.childIndex + 1;
                         }
                     }
                 }
@@ -203,7 +204,7 @@ Shader "Custom/RayTracer"
                 return result;
             }
 
-            HitInfo CalculateRayCollision(Ray ray, inout uint numTriTests)
+            HitInfo CalculateRayCollision(Ray ray, inout uint2 stats)
             {
                 HitInfo result;
                 result.distance = 1.#INF;
@@ -212,7 +213,7 @@ Shader "Custom/RayTracer"
                 {
                     Model model = Models[i];
 
-                    HitInfo hit = RayTriangleBVH(ray, model.nodeOffset, model.triangleOffset, numTriTests);
+                    HitInfo hit = RayTriangleBVH(ray, model.nodeOffset, model.triangleOffset, stats);
 
                     if(hit.didHit && hit.distance < result.distance)
                     {
@@ -227,8 +228,8 @@ Shader "Custom/RayTracer"
             int MaxBounceCount;
             int NumRaysPerPixel;
 
-            int enableDebugVisRays;
-            float debugVisRays;
+            int debugMode;
+            float debugVisScale;
 
             float3 skyColor;
 
@@ -236,11 +237,11 @@ Shader "Custom/RayTracer"
             {
                 float3 incomingLight = 0;
                 float3 rayColor = 1;
-                uint numTriTests = 0;
+                uint2 stats = uint2(0, 0);
 
                 for(int i = 0; i <= MaxBounceCount; i++)
                 {
-                    HitInfo hitInfo = CalculateRayCollision(ray, numTriTests);
+                    HitInfo hitInfo = CalculateRayCollision(ray, stats);
 
                     if(hitInfo.didHit)
                     {
@@ -265,10 +266,15 @@ Shader "Custom/RayTracer"
                     }
                 }
 
-                if(enableDebugVisRays == 1)
+                if(debugMode == 1)
                 {
-                    float debugVis = numTriTests / debugVisRays;
+                    float debugVis = stats[0] / debugVisScale;
                     return debugVis < 1 ? debugVis : float3(1,0,0);
+                }
+                else if(debugMode == 2)
+                {
+                    float debugVis = stats[1] / debugVisScale;
+                    return debugVis < 1 ? debugVis : float3(1, 0, 0);
                 }
                 else
                 {
