@@ -75,6 +75,7 @@ Shader "Custom/RayTracer"
             {
                 float3 origin;
                 float3 direction;
+                float3 inverseDirection;
             };
 
             struct HitInfo
@@ -87,8 +88,6 @@ Shader "Custom/RayTracer"
                 RayTracingMaterial material;
             };
 
-            // PCG (permuted congruential generator). Thanks to:
-			// www.pcg-random.org and www.shadertoy.com/view/XlGcRh
 			uint NextRandom(inout uint state)
 			{
 				state = state * 747796405 + 2891336453;
@@ -151,16 +150,16 @@ Shader "Custom/RayTracer"
                 return hitInfo;
             }
 
-            bool RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
+            float RayBoundingBox(Ray ray, float3 boxMin, float3 boxMax)
             {
-                float3 invDir = 1 / ray.direction;
-                float3 tMin = (boxMin - ray.origin) * invDir;
-                float3 tMax = (boxMax - ray.origin) * invDir;
+                float3 tMin = (boxMin - ray.origin) * ray.inverseDirection;
+                float3 tMax = (boxMax - ray.origin) * ray.inverseDirection;
                 float3 t1 = min(tMin, tMax);
                 float3 t2 = max(tMin, tMax);
                 float tNear = max(max(t1.x, t1.y), t1.z);
                 float tFar = min(min(t2.x, t2.y), t2.z);
-                return tNear <= tFar;
+                bool didHit = tFar >= tNear && tFar > 0;
+                return didHit ? tNear : 1.#INF;
             }
 
             HitInfo RayTriangleBVH(Ray ray, int nodeOffset, int triangleOffset, inout int2 stats)
@@ -176,29 +175,45 @@ Shader "Custom/RayTracer"
                 {
                     Node node = Nodes[stack[--stackIndex]];
 
-                    stats[0]++;
-                    if(RayBoundingBox(ray, node.boundsMin, node.boundsMax))
+                    if(node.childIndex == 0)
                     {
-                        if(node.childIndex == 0)
+                        for(int i = 0; i < node.triangleCount; i++)
                         {
-                            for(int i = 0; i < node.triangleCount; i++)
-                            {
-                                Triangle tri = Triangles[triangleOffset + node.firstTriangleIndex + i];
-                                HitInfo hitInfo = HitTriangle(tri, ray);
-                                stats[1]++;
+                            Triangle tri = Triangles[triangleOffset + node.firstTriangleIndex + i];
+                            HitInfo hitInfo = HitTriangle(tri, ray);
+                            stats[1]++;
 
-                                if(hitInfo.didHit && hitInfo.distance < result.distance)
-                                {
-                                    result = hitInfo;
-                                }
+                            if(hitInfo.didHit && hitInfo.distance < result.distance)
+                            {
+                                result = hitInfo;
                             }
+                        }
+                    }
+                    else
+                    {
+
+                        int childIndex = nodeOffset + node.childIndex;
+                        Node childA = Nodes[childIndex + 0];
+                        Node childB = Nodes[childIndex + 1];
+
+                        stats[0] += 2;
+                        float dstA = RayBoundingBox(ray, childA.boundsMin, childA.boundsMax);
+                        float dstB = RayBoundingBox(ray, childB.boundsMin, childB.boundsMax);
+
+                        //The closest distance should be pushed last, so it can be processed first
+                        if(dstA < dstB)
+                        {
+                            if(dstB < result.distance) stack[stackIndex++] = childIndex + 1;
+                            if(dstA < result.distance) stack[stackIndex++] = childIndex + 0;
                         }
                         else
                         {
-                            stack[stackIndex++] = nodeOffset + node.childIndex + 0;
-                            stack[stackIndex++] = nodeOffset + node.childIndex + 1;
+                            if(dstA < result.distance) stack[stackIndex++] = childIndex + 0;
+                            if(dstB < result.distance) stack[stackIndex++] = childIndex + 1;
                         }
+
                     }
+                    
                 }
 
                 return result;
@@ -253,6 +268,7 @@ Shader "Custom/RayTracer"
 
                         bool isSpecularBounce = material.specularProbability >= RandomValue(rngState);
                         ray.direction = lerp(diffuseDirection, specularDirection, material.smoothness * isSpecularBounce);
+                        ray.inverseDirection = 1 / ray.direction;
 
                         float3 emittedLight = material.emissionColor * material.emissionStrength;
                         incomingLight += emittedLight * rayColor;
@@ -300,6 +316,7 @@ Shader "Custom/RayTracer"
                 Ray ray;
                 ray.origin = _WorldSpaceCameraPos;
                 ray.direction = normalize(viewPoint - ray.origin);
+                ray.inverseDirection = 1 / ray.direction;
 
                 float3 totalIncomingLight = 0;
 

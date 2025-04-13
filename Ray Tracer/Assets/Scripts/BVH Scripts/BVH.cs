@@ -12,7 +12,7 @@ public class BVH
     public List<Node> AllNodes;
     public List<BVHTriangle> AllTriangles;
 
-    public int maxDepth = 10;
+    public int maxDepth = 16;
 
     //Construct the bvh
     public BVH(Vector3[] vertices, int[] indices, Vector3[] normals, Vector3 pos, Quaternion rot, Vector3 scale)
@@ -46,9 +46,13 @@ public class BVH
             AllTriangles.Add(new BVHTriangle(a, b, c, normalA, normalB, normalC));
         }
 
+
         //Start recursively splitting the mesh
         Node root = new Node(bounds, 0, AllTriangles.Count, 0);
         AllNodes.Add(root);
+
+        //Don't actually construct a bvh if triangle count is too low
+        if (AllTriangles.Count < 100) return;
 
         Split(0, 0, AllTriangles.Count);
     }
@@ -105,8 +109,6 @@ public class BVH
 
         AllNodes.Add(new Node(boundsA, start));
         AllNodes.Add(new Node(boundsB, start + numTrisA));
-
-        //Debug.Log(numTrisA + " " + numTrisB);
 
         //Split again
         Split(parent.childIndex + 0, start, numTrisA, depth + 1);
