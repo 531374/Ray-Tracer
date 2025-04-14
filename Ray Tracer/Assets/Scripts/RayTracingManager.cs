@@ -17,6 +17,10 @@ public class RayTracingManager : MonoBehaviour
     [Header("Settings")]
     public int MaxBounceCount;
     public int numRaysPerPixel;
+    [SerializeField] float divergeStrength;
+    [SerializeField] float defocusStrength;
+    [SerializeField] float focusDistance;
+
     [SerializeField] Color skyColor;
 
     [Header("References")]
@@ -144,7 +148,7 @@ public class RayTracingManager : MonoBehaviour
         }
 
         UpdateModels();
-        UpdateCameraParams(Camera.current);
+        UpdateCameraParams(Camera.main);
         UpdateShaderParams();
     }
 
@@ -152,10 +156,15 @@ public class RayTracingManager : MonoBehaviour
     {
         float planeHeight = cam.nearClipPlane * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 2f;
         float planeWidth = planeHeight * cam.aspect;
+        cam.nearClipPlane = focusDistance;
 
         rayTracingMaterial.SetVector("ViewParams", new Vector3(planeWidth, planeHeight, cam.nearClipPlane));
         rayTracingMaterial.SetMatrix("CamLocalToWorldMatrix", cam.transform.localToWorldMatrix);
         rayTracingMaterial.SetColor("skyColor", skyColor);
+
+        rayTracingMaterial.SetFloat("divergeStrength", divergeStrength);
+        rayTracingMaterial.SetFloat("defocusStrength", defocusStrength);
+
     }
 
     void UpdateShaderParams()
@@ -240,6 +249,7 @@ public class RayTracingManager : MonoBehaviour
     {
         MaxBounceCount = Mathf.Max(0, MaxBounceCount);
         numRaysPerPixel = Mathf.Max(1, numRaysPerPixel);
+        focusDistance = Mathf.Max(0.1f, focusDistance);
     }
 
 }

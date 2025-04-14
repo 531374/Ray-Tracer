@@ -118,12 +118,22 @@ Shader "Custom/RayTracer"
                 return normalize(float3(x,y,z));
             }
 
+
             float3 RandomHemisphereDirection(float3 normal, inout uint state)
             {
                 float3 dir = RandomDirection(state);
                 return dir * sign(dot(normal, dir));
             }
+
+            static const float PI = 3.141526;
             
+            float2 RandomPointInCircle(inout uint rngState)
+            {
+                float angle = RandomValue(rngState) * 2 * PI;
+                float2 pointOnCircle = float2(cos(angle), sin(angle));
+                return pointOnCircle * sqrt(RandomValue(rngState));
+            }
+
             //Uses following algorithm so check hit
             //https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 
@@ -250,6 +260,8 @@ Shader "Custom/RayTracer"
 
             int MaxBounceCount;
             int NumRaysPerPixel;
+            float divergeStrength;
+            float defocusStrength;
 
             int debugMode;
             float triangleDebugScale;
@@ -332,14 +344,22 @@ Shader "Custom/RayTracer"
                 float3 viewPointLocal = float3(i.uv - 0.5, 1) * ViewParams;
                 float3 viewPoint = mul(CamLocalToWorldMatrix, float4(viewPointLocal, 1));
 
-                Ray ray;
-                ray.origin = _WorldSpaceCameraPos;
-                ray.direction = normalize(viewPoint - ray.origin);
+                float3 camUp = CamLocalToWorldMatrix._m01_m11_m21;
+                float3 camRight = CamLocalToWorldMatrix._m00_m10_m20;
 
                 float3 totalIncomingLight = 0;
 
                 for(int rayIndex = 0; rayIndex < NumRaysPerPixel; rayIndex++)
                 {
+                    Ray ray;
+
+                    float2 defocusJitter = RandomPointInCircle(rngState) * defocusStrength / numPixels.x;
+                    ray.origin = _WorldSpaceCameraPos + camRight * defocusJitter.x + camUp * defocusJitter.y;
+
+                    float2 jitter = RandomPointInCircle(rngState) * divergeStrength / numPixels.x;
+                    float3 jitteredViewPoint = viewPoint + camRight * jitter.x + camUp * jitter.y;
+                    ray.direction = normalize(jitteredViewPoint - ray.origin);
+
                     totalIncomingLight += Trace(ray, rngState);
                 }
 
