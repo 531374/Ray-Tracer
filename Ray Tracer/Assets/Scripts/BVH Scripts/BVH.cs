@@ -1,9 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Runtime.InteropServices;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 //A BVH or Bounding Volume Hierarchy is a structure used to optimize ray tracing performance
 //It does this by dividing the mesh into bounding boxes, a triangle does not need to hittest if ray does not hit box
@@ -15,7 +12,7 @@ public class BVH
     public BVHTriangle[] BuildTriangles;
 
     //Construct the bvh
-    public BVH(Vector3[] vertices, int[] indices, Vector3[] normals, Vector3 pos, Quaternion rot, Vector3 scale)
+    public BVH(Vector3[] vertices, int[] indices, Vector3[] normals)
     {
         AllNodes = new List<Node>();
 

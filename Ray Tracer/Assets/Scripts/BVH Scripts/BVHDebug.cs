@@ -23,7 +23,7 @@ public class BVHDebug : MonoBehaviour
         if (bvh == null)
         {
             if (mesh == null) mesh = GetComponent<MeshFilter>().sharedMesh;
-            bvh = new BVH(mesh.vertices, mesh.triangles, mesh.normals, transform.position, transform.rotation, transform.lossyScale);
+            bvh = new BVH(mesh.vertices, mesh.triangles, mesh.normals);
         }
 
         if (enableDebugBVHRay)

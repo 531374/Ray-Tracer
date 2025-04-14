@@ -221,7 +221,7 @@ public class RayTracingManager : MonoBehaviour
 
             if (mesh == null) return;
 
-            BVH bvh = new BVH(mesh.vertices, mesh.triangles, mesh.normals, t.position, t.rotation, t.lossyScale);
+            BVH bvh = new BVH(mesh.vertices, mesh.triangles, mesh.normals);
             Model model = new Model(allNodes.Count, allTriangles.Count, obj.material);
 
             allNodes.AddRange(bvh.AllNodes);

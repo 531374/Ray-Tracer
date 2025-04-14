@@ -21,8 +21,13 @@ public struct BoundingBox
         }
         else
         {
-            Min = Vector3.Min(Min, min);
-            Max = Vector3.Max(Max, max);
+            Min.x = min.x < Min.x ? min.x : Min.x;
+            Min.y = min.y < Min.y ? min.y : Min.y;
+            Min.z = min.z < Min.z ? min.z : Min.z;
+
+            Max.x = max.x > Max.x ? max.x : Max.x;
+            Max.y = max.y > Max.y ? max.y : Max.y;
+            Max.z = max.z > Max.z ? max.z : Max.z;
         }
 
     }
