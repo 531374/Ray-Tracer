@@ -148,6 +148,8 @@ public class RayTracingManager : MonoBehaviour
 
         ShaderHelper.CreateRenderTexture(ref resultTexture, Screen.width, Screen.height, FilterMode.Bilinear, ShaderHelper.RGBA_SFloat, "Result");
 
+        if (allModels == null || FindObjectsOfType<BVHObject>().Length != allModels.Count) bvhCreated = false;
+
         if (!bvhCreated)
         {
             CreateMeshes();

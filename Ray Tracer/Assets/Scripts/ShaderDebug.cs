@@ -21,10 +21,18 @@ public class ShaderDebug : MonoBehaviour
     int maxBounces;
     int raysPerPixel;
 
+    float currentFPS;
+    float currentFPSTime;
+    int currentFPSFrames;
+
     private void Awake()
     {
         startTime = Time.time;
         manager = RayTracingManager.instance;
+
+        currentFPSTime = Time.time;
+        currentFPSFrames = 0;
+        currentFPS = 0f;
 
         maxBounces = manager.MaxBounceCount;
         raysPerPixel = manager.numRaysPerPixel;
@@ -40,7 +48,15 @@ public class ShaderDebug : MonoBehaviour
 
         float averageTimePerFrame = totalTime / frames;
 
-        debugText.text = $"Avg FPS: {averageFps:F0}\nAvg/Frame: {averageTimePerFrame:F2}\nMax Bounces: {maxBounces}\nRays Per Pixel: {raysPerPixel}";
+        currentFPSFrames++; 
+        if(Time.time - currentFPSTime > 1f)
+        {
+            currentFPSTime = Time.time;
+            currentFPS = currentFPSFrames;
+            currentFPSFrames = 0;
+        }
+
+        debugText.text = $"Current FPS: {currentFPS:F0}\n Avg FPS: {averageFps:F2}\nAvg/Frame: {averageTimePerFrame:F2}\nMax Bounces: {maxBounces}\nRays Per Pixel: {raysPerPixel}";
 
         if(Time.time - startTime > testTime)
         {

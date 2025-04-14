@@ -1862,14 +1862,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Avg FPS: 101.2
-
-    Avg Time/Frame: 0.01
-
-    Max Bounces: 10
-
-    Rays
-    Per Pixel: 25'
+  m_text: "Current FPS:\nAvg FPS: \nAvg Time/Frame: \nMax Bounces: \nRays Per Pixel: "
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
