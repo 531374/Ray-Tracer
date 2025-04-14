@@ -258,6 +258,24 @@ Shader "Custom/RayTracer"
                 return result;
             }
 
+            float3 skyHorizonColor;
+            float3 skyColor;
+            float3 groundColor;
+            float3 sunLightDirection;
+            float sunFocus;
+            float sunIntensity;
+
+            float3 EnvironmentLight(Ray ray)
+            {
+                float skyGradientT = pow(smoothstep(0, 0.4, ray.direction.y), 0.35);
+                float3 skyGradient = lerp(skyHorizonColor, skyColor, skyGradientT);
+                float sun = pow(max(0, dot(ray.direction, -sunLightDirection)), sunFocus) * sunIntensity;
+
+                float groundToSkyT = smoothstep(-0.01, 0, ray.direction.y);
+                float sunMask = groundToSkyT >= 1;
+                return lerp(groundColor, skyGradient, groundToSkyT) + sun * sunMask;
+            }
+
             int MaxBounceCount;
             int NumRaysPerPixel;
             float divergeStrength;
@@ -266,8 +284,6 @@ Shader "Custom/RayTracer"
             int debugMode;
             float triangleDebugScale;
             float boxDebugScale;
-
-            float3 skyColor;
 
             float3 Trace(Ray ray, inout int rngState)
             {
@@ -306,7 +322,7 @@ Shader "Custom/RayTracer"
                     }
                     else
                     {
-                        incomingLight += skyColor * rayColor;
+                        incomingLight += EnvironmentLight(ray) * rayColor;
                         break;
                     }
                 }

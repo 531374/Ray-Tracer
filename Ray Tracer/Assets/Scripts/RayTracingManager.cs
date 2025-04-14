@@ -17,15 +17,22 @@ public class RayTracingManager : MonoBehaviour
     [Header("Settings")]
     public int MaxBounceCount;
     public int numRaysPerPixel;
+
+    [Header("Camera Settings")]
     [SerializeField] float divergeStrength;
     [SerializeField] float defocusStrength;
     [SerializeField] float focusDistance;
 
-    [SerializeField] Color skyColor;
+    [Header("Environment Settings")]
+    [SerializeField] bool enableEnvironment;
+    [SerializeField] Color skyHorizonColor;
+    [SerializeField] Color groundColor;
+    [SerializeField] float sunFocus;
 
     [Header("References")]
     [SerializeField] Shader rayTracingShader;
     [SerializeField] Shader accumulatorShader;
+    [SerializeField] Light sun;
 
 
     Material rayTracingMaterial;
@@ -149,6 +156,7 @@ public class RayTracingManager : MonoBehaviour
 
         UpdateModels();
         UpdateCameraParams(Camera.main);
+        UpdateEnvironmentParams();
         UpdateShaderParams();
     }
 
@@ -158,9 +166,8 @@ public class RayTracingManager : MonoBehaviour
         float planeWidth = planeHeight * cam.aspect;
         cam.nearClipPlane = focusDistance;
 
-        rayTracingMaterial.SetVector("ViewParams", new Vector3(planeWidth, planeHeight, cam.nearClipPlane));
+        rayTracingMaterial.SetVector("ViewParams", new Vector3(planeWidth, planeHeight, focusDistance));
         rayTracingMaterial.SetMatrix("CamLocalToWorldMatrix", cam.transform.localToWorldMatrix);
-        rayTracingMaterial.SetColor("skyColor", skyColor);
 
         rayTracingMaterial.SetFloat("divergeStrength", divergeStrength);
         rayTracingMaterial.SetFloat("defocusStrength", defocusStrength);
@@ -175,6 +182,21 @@ public class RayTracingManager : MonoBehaviour
         rayTracingMaterial.SetFloat("boxDebugScale", boxDebugScale);
         rayTracingMaterial.SetFloat("triangleDebugScale", triangleDebugScale);
         rayTracingMaterial.SetInt("debugMode", debugMode);
+    }
+
+    void UpdateEnvironmentParams()
+    {
+        if (sun == null) enableEnvironment = false;
+
+        rayTracingMaterial.SetColor("skyColor", enableEnvironment ? sun.color : Color.black);
+        rayTracingMaterial.SetColor("skyHorizonColor", enableEnvironment ? skyHorizonColor : Color.black);
+        rayTracingMaterial.SetColor("groundColor", enableEnvironment ? groundColor : Color.black);
+
+        if (sun == null) return;
+
+        rayTracingMaterial.SetVector("sunLightDirection", sun.transform.forward);
+        rayTracingMaterial.SetFloat("sunFocus", sunFocus);
+        rayTracingMaterial.SetFloat("sunIntensity", sun.intensity);
     }
    
 
@@ -225,7 +247,12 @@ public class RayTracingManager : MonoBehaviour
     {
         for (int i = 0; i < allModels.Count; i++)
         {
-            if (objects[i] == null) objects.Remove(objects[i]);
+            if (objects[i] == null) 
+            {
+                objects.Remove(objects[i]);
+                allModels.Remove(allModels[i]);
+                return;
+            }
             Model model = allModels[i];
             model.worldToLocalMatrix = objects[i].worldToLocalMatrix;
             model.localToWorldMatrix = objects[i].localToWorldMatrix;
